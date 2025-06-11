@@ -22,6 +22,10 @@ const MODEL_PROVIDERS = {
   "qwen/qwen3-235b-a22b:free": {
     provider: openrouter,
     displayName: "Qwen 3 235B (OpenRouter)"
+  },
+  "meta-llama/llama-4-maverick:free": {
+    provider: openrouter,
+    displayName: "LLaMA 4 Maverick (OpenRouter)"
   }
 };
 

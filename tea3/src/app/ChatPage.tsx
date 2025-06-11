@@ -85,12 +85,32 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() || !threadId || isSending) return;
+    if (!input.trim() || isSending) return;
 
     setError(null); // Clear previous errors on a new submission
     setIsSending(true); // Set sending state for the button
 
-    const currentThreadId = parseInt(threadId);
+    let currentThreadId: number;
+
+    // If no threadId exists, create a new thread automatically
+    if (!threadId) {
+      try {
+        currentThreadId = await db.threads.add({
+          title: "New Chat",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        navigate(`/chat/${currentThreadId}`);
+      } catch (error) {
+        console.error("Failed to create new chat:", error);
+        setError("Failed to create a new chat session.");
+        setIsSending(false);
+        return;
+      }
+    } else {
+      currentThreadId = parseInt(threadId);
+    }
+
     let assistantMessageId: number | null = null;
 
     const historyForAI = (messages || []).map((m) => ({
@@ -170,106 +190,136 @@ export default function ChatPage() {
 
   if (isLoadingModels) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-gray-600">Loading models...</div>
+      <div className="chat-container h-screen w-screen flex items-center justify-center">
+        <div className="glass-effect rounded-2xl p-8 text-white text-lg font-medium">
+          Loading models...
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col w-full max-w-2xl mx-auto h-screen">
-      {/* Header with New Chat and Model Selector */}
-      <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor="model-select"
-            className="text-sm font-medium text-gray-700"
-          >
-            Model:
-          </label>
-          <select
-            id="model-select"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            disabled={availableModels.length === 0}
-          >
-            {availableModels.map((model) => (
-              <option key={model.value} value={model.value}>
-                {model.displayName}
-              </option>
-            ))}
-          </select>
+    <div className="chat-container h-screen w-screen flex flex-col">
+      {/* Modern Header */}
+      <div className="header-glass p-6 flex justify-between items-center relative z-10">
+        <div className="flex items-center space-x-6">
+          <h1 className="text-2xl font-bold text-white">Tea3 Chat</h1>
         </div>
         <button
           onClick={handleNewChat}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          className="glass-button px-6 py-3 text-white rounded-xl font-medium hover:shadow-lg transition-all duration-300"
         >
           + New Chat
         </button>
       </div>
 
-      {/* Error Display Area */}
+      {/* Error Display */}
       {error && (
-        <div className="mx-4 mt-2 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
-          <div className="flex items-center">
-            <span className="font-semibold mr-2">Error:</span>
-            <span>{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="ml-auto text-red-500 hover:text-red-700 font-bold"
-            >
-              &times;
-            </button>
+        <div className="mx-6 mt-4 relative z-10">
+          <div className="bg-red-500/20 border border-red-500/30 backdrop-filter backdrop-blur-md text-red-100 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">{error}</span>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-200 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Message Display Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {!threadId && (
-          <div className="text-center text-gray-500">
-            Select a chat from the sidebar or start a new one.
+      {/* Chat Messages Area */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 relative z-10">
+        {!threadId ? (
+          <div className="text-center">
+          </div>
+        ) : (
+          <div className="w-full max-w-4xl h-full flex flex-col">
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-6">
+              {messages?.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-3xl p-6 rounded-2xl ${
+                      m.role === "user"
+                        ? "user-message text-white"
+                        : "assistant-message text-white"
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-        {messages?.map((m) => (
-          <div
-            key={m.id}
-            className={`p-3 rounded-lg flex flex-col ${
-              m.role === "user"
-                ? "bg-blue-500 text-white self-end items-end"
-                : "bg-gray-200 text-gray-800 self-start items-start"
-            }`}
-          >
-            <span className="font-bold">
-              {m.role === "user" ? "You" : "AI"}
-            </span>
-            <p className="whitespace-pre-wrap">{m.content}</p>
-          </div>
-        ))}
       </div>
 
-      {/* Form / Input Area */}
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex items-center">
-          <input
-            className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={input}
-            placeholder={
-              threadId ? "Say something..." : "Start a new chat first"
-            }
-            onChange={(e) => setInput(e.target.value)}
-            disabled={!threadId || isSending}
-          />
-          <button
-            type="submit"
-            disabled={!threadId || !input.trim() || isSending}
-            className="ml-2 px-4 py-2 w-28 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 flex items-center justify-center"
-          >
-            {isSending ? (
-              <>
+      {/* Modern Input Area */}
+      <div className="p-6 pb-0 relative z-10">
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          <div className="flex items-center space-x-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <label htmlFor="model-select" className="text-sm font-medium text-white/80">
+                Model:
+              </label>
+              <select
+                id="model-select"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="glass-input px-4 py-2 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/30 bg-white/10"
+                disabled={availableModels.length === 0}
+              >
+                {availableModels.map((model) => (
+                  <option key={model.value} value={model.value} className="bg-gray-800">
+                    {model.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="input-glass rounded-t-2xl rounded-b-none p-4 flex items-end space-x-4">
+            <div className="flex-1">
+              <textarea
+                className="w-full bg-transparent text-white placeholder-white/50 resize-none focus:outline-none text-lg leading-relaxed"
+                value={input}
+                placeholder="Type your message here..."
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isSending}
+                rows={1}
+                style={{
+                  minHeight: '4.5rem',
+                  maxHeight: '8rem',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() && !isSending) {
+                      handleSubmit(e as any);
+                    }
+                  }
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!input.trim() || isSending}
+              className="glass-button p-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[48px]"
+            >
+              {isSending ? (
                 <svg
-                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  className="animate-spin w-5 h-5 text-white"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -288,14 +338,25 @@ export default function ChatPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                Sending...
-              </>
-            ) : (
-              "Send"
-            )}
-          </button>
-        </div>
-      </form>
+              ) : (
+                <svg
+                  className="w-5 h-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

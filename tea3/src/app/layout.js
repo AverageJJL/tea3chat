@@ -3,7 +3,7 @@ import "./globals.css";
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-blue-100 antialiased">
+      <body className="bg-gray-900 antialiased overflow-hidden">
         {children}
       </body>
     </html>
