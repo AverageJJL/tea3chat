@@ -100,3 +100,10 @@
   border-color: rgba(255, 255, 255, 0.4);
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
 }
+
+/* Unified chat input with single gaussian blur */
+.chat-input-unified {
+  background: rgba(55, 65, 81, 0.3);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

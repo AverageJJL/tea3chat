@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db"; // Your Dexie instance
@@ -24,6 +24,10 @@ export default function ChatPage() {
 
   // --- STATE FROM original chatpage.tsx ---
   const [input, setInput] = useState("");
+
+  // --- ATTACHMENTS STATE ---
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // --- MODEL FETCHING LOGIC (from chatpage.js) ---
   useEffect(() => {
@@ -85,7 +89,15 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() || isSending) return;
+    if (!input.trim() && !attachedImage) return; // Require text or image
+    if (isSending) return;
+
+    // If an image is attached but the selected model doesn't support it, show an error
+    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free";
+    if (attachedImage && !modelSupportsImages) {
+      setError("Image attachments are not supported by the selected model.");
+      return;
+    }
 
     setError(null); // Clear previous errors on a new submission
     setIsSending(true); // Set sending state for the button
@@ -113,16 +125,29 @@ export default function ChatPage() {
 
     let assistantMessageId: number | null = null;
 
-    const historyForAI = (messages || []).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const historyForAI = (messages || []).map((m) => {
+      // Re-hydrate messages for the AI provider – if a message has attachments, convert them to the multimodal format
+      if (m.attachments && m.attachments.length > 0) {
+        return {
+          role: m.role,
+          content: [
+            { type: "text", text: m.content },
+            ...m.attachments.map((url) => ({
+              type: "image_url",
+              image_url: { url },
+            })),
+          ],
+        } as any;
+      }
+      return { role: m.role, content: m.content } as any;
+    });
 
     try {
       await db.messages.add({
         threadId: currentThreadId,
         role: "user",
         content: input,
+        attachments: attachedImage ? [attachedImage] : undefined,
         createdAt: new Date(),
       });
 
@@ -136,11 +161,23 @@ export default function ChatPage() {
         createdAt: new Date(),
       });
 
+      let userMessageForAPI: any;
+      if (attachedImage) {
+        const multimodalParts: any[] = [];
+        if (currentInput.trim()) {
+          multimodalParts.push({ type: "text", text: currentInput });
+        }
+        multimodalParts.push({ type: "image_url", image_url: { url: attachedImage } });
+        userMessageForAPI = { role: "user", content: multimodalParts };
+      } else {
+        userMessageForAPI = { role: "user", content: currentInput };
+      }
+
       const response = await fetch("/api/chat", {
         method: "POST",
         body: JSON.stringify({
           model: selectedModel, // <-- Send the selected model
-          messages: [...historyForAI, { role: "user", content: currentInput }],
+          messages: [...historyForAI, userMessageForAPI],
         }),
       });
 
@@ -183,7 +220,25 @@ export default function ChatPage() {
       }
     } finally {
       setIsSending(false); // Reset sending state
+      setAttachedImage(null); // Clear image after send or error
     }
+  };
+
+  // --- IMAGE HANDLERS ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeAttachedImage = () => {
+    setAttachedImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // --- UI / JSX (MERGED) ---
@@ -238,13 +293,14 @@ export default function ChatPage() {
       )}
 
       {/* Chat Messages Area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 relative z-10">
-        {!threadId ? (
-          <div className="text-center">
-          </div>
-        ) : (
-          <div className="w-full max-w-4xl h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-6">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="max-w-4xl mx-auto px-6 py-8 pb-60">
+          {!threadId ? (
+            <div className="text-center">
+              {/* This can be a welcome message or placeholder */}
+            </div>
+          ) : (
+            <div className="space-y-6 pb-6">
               {messages?.map((m) => (
                 <div
                   key={m.id}
@@ -258,38 +314,46 @@ export default function ChatPage() {
                     }`}
                   >
                     <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                    {m.attachments?.map((url, idx) => (
+                      <img
+                        key={idx}
+                        src={url}
+                        alt="attachment"
+                        className="mt-3 max-w-xs rounded-lg border border-white/10"
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Modern Input Area */}
-      <div className="p-6 pb-0 relative z-10">
+      <div className="fixed bottom-0 left-0 right-0 z-20">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="flex items-center space-x-3">
-              <label htmlFor="model-select" className="text-sm font-medium text-white/80">
-                Model:
-              </label>
-              <select
-                id="model-select"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="glass-input px-4 py-2 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/30 bg-white/10"
-                disabled={availableModels.length === 0}
-              >
-                {availableModels.map((model) => (
-                  <option key={model.value} value={model.value} className="bg-gray-800">
-                    {model.displayName}
-                  </option>
-                ))}
-              </select>
+          <div className="chat-input-unified rounded-t-2xl">
+            <div className="flex items-center space-x-4 px-6 py-3">
+              <div className="flex items-center space-x-3">
+                <label htmlFor="model-select" className="text-sm font-medium text-white/80">
+                  Model:
+                </label>
+                <select
+                  id="model-select"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="glass-input px-4 py-2 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/30 bg-white/10"
+                  disabled={availableModels.length === 0}
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.value} value={model.value} className="bg-gray-800">
+                      {model.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
-          <div className="input-glass rounded-t-2xl rounded-b-none p-4 flex items-end space-x-4">
+            <div className="p-6 flex items-end space-x-4">
             <div className="flex-1">
               <textarea
                 className="w-full bg-transparent text-white placeholder-white/50 resize-none focus:outline-none text-lg leading-relaxed"
@@ -305,40 +369,28 @@ export default function ChatPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (input.trim() && !isSending) {
+                    if ((input.trim() || attachedImage) && !isSending) {
                       handleSubmit(e as any);
                     }
                   }
                 }}
               />
             </div>
-            <button
-              type="submit"
-              disabled={!input.trim() || isSending}
-              className="glass-button p-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[48px]"
-            >
-              {isSending ? (
-                <svg
-                  className="animate-spin w-5 h-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              ) : (
+
+            {/* Attach image button */}
+            <div className="flex items-center space-x-2">
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="glass-button p-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[48px]"
+              >
                 <svg
                   className="w-5 h-5 text-white"
                   fill="none"
@@ -349,11 +401,80 @@ export default function ChatPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    d="M3 16V4a1 1 0 011-1h12a1 1 0 011 1v12m-4 4H7a2 2 0 01-2-2V8a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2z"
                   />
                 </svg>
+              </button>
+
+              {attachedImage && (
+                <div className="relative">
+                  <img
+                    src={attachedImage}
+                    alt="preview"
+                    className="w-12 h-12 object-cover rounded-md border border-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={removeAttachedImage}
+                    className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-0.5"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               )}
-            </button>
+
+              {/* Send button */}
+              <button
+                type="submit"
+                disabled={(!input.trim() && !attachedImage) || isSending}
+                className="glass-button p-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[48px]"
+              >
+                {isSending ? (
+                  <svg
+                    className="animate-spin w-5 h-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
+            </div>
           </div>
         </form>
       </div>

@@ -12,6 +12,8 @@ interface Message {
   threadId: number;
   role: 'user' | 'assistant';
   content: string;
+  // Data URLs for any image attachments associated with the message
+  attachments?: string[];
   createdAt: Date;
 }
 
