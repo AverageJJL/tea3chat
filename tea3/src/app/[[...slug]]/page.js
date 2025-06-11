@@ -1,17 +1,28 @@
 "use client";
 
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useParams,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import ChatPage from "../ChatPage"; 
 
 export default function AppClientRouter() {
+  // ensure this component only renders on the client-side where window is available for BrowserRouter
   if (typeof window === "undefined") {
-    return null;
+    return null; 
+  }
+  
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Show a consistent loading state during hydration
+  if (!isClient) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
   }
 
   return (
