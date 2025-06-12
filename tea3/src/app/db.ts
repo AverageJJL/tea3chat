@@ -1,35 +1,42 @@
-import Dexie from "dexie";
+import Dexie, { Table } from "dexie";
 
-interface Thread {
+export interface Thread {
   id?: number;
+  userId: string; 
   title: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-interface Message {
+export interface Message {
   id?: number;
   threadId: number;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
-  // Data URLs for any image attachments associated with the message
-  attachments?: string[];
+  attachments?: string[]; 
   createdAt: Date;
+  model?: string; 
 }
 
 export class MySubClassedDexie extends Dexie {
-  threads!: Dexie.Table<Thread, number>;
-  messages!: Dexie.Table<Message, number>;
+  threads!: Table<Thread>;
+  messages!: Table<Message>;
 
   constructor() {
-    super("t3-chat-clone-db");
-
+    super("tea3ChatDB");
     this.version(1).stores({
       threads: "++id, title, createdAt, updatedAt",
-      messages: "++id, threadId, role, content, createdAt, [threadId+createdAt]",
+      messages: "++id, threadId, role, createdAt, model",
     });
+   
+    this.version(2).stores({
+      threads: "++id, userId, title, createdAt, updatedAt", 
+      messages: "++id, threadId, role, createdAt, model", 
+    }).upgrade(tx => {
+      console.log("Upgrading database to version 2: adding 'userId' to 'threads' table and indexing it.");
+    });
+   
   }
 }
 
-// Create a single, reusable instance of the database
 export const db = new MySubClassedDexie();
