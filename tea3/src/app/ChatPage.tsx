@@ -1,21 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useUser } from '@clerk/nextjs';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Thread, Message, MessageAttachment } from './db'; // Ensure MessageAttachment is exported from db.ts
-import { uploadFileToSupabaseStorage } from './supabaseStorage'; // ASSUMPTION: Create and import this utility
+import { uploadFileToSupabaseStorage } from './supabaseStorage';
 import Sidebar from './Sidebar';
-// import { SendHorizonal, Paperclip, XSquare, Loader2, Bot, User } from 'lucide-react'; // Assuming lucide-react for icons
+// import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
 // Placeholder for icons if lucide-react is not used or to avoid import errors
 const SendHorizonal = () => <span>Send</span>;
 const Paperclip = () => <span>Attach</span>;
 const XSquare = () => <span>X</span>;
 const Loader2 = () => <span>Loading...</span>;
-const Bot = () => <span>Bot</span>;
-const User = () => <span>User</span>;
+const Pencil = () => <span>Edit</span>;
+const Recycle = () => <span>Regen</span>;
 
 interface AiModel {
   value: string;
@@ -78,7 +78,6 @@ async function syncFullThreadToBackend(payload: FullThreadSyncPayload): Promise<
       throw new Error(errorData.error || `Failed to sync full thread: ${response.statusText}`);
     }
     const result = await response.json();
-    console.log("Full thread synced to backend:", result);
 
     if (result.success && result.data) {
       const syncedSupabaseThread = result.data.thread;
@@ -109,7 +108,6 @@ async function fetchAndStoreCloudData() {
     try { await db.open(); } catch (e) { console.error("Failed to open Dexie DB:", e); return; }
   }
   try {
-    console.log("Attempting to fetch data from Supabase backend...");
     const response = await fetch('/api/sync');
     if (!response.ok) {
       const errorData = await response.json();
@@ -168,7 +166,6 @@ async function fetchAndStoreCloudData() {
           }
         }
       });
-      console.log("Data synced from Supabase and stored locally.");
     } else if (!cloudFetchResult.success) {
       console.error("Cloud sync failed:", cloudFetchResult.error);
     }
@@ -187,7 +184,12 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
-  const [attachedImage, setAttachedImage] = useState<string | null>(null); // This is a base64 data URL for preview
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  // Add drag and drop state
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  // Add edit message state
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -201,7 +203,9 @@ export default function ChatPage() {
         const data = await response.json();
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
-          setSelectedModel(data.models[0].value); // Default to first model
+          // Default to Gemini model, fallback to first model if Gemini not available
+          const geminiModel = data.models.find((model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20");
+          setSelectedModel(geminiModel ? geminiModel.value : data.models[0].value);
         }
       } catch (err: any) {
         setError(err.message || "Error loading models.");
@@ -235,10 +239,24 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Title Generation (Placeholder - assuming it exists elsewhere or is simple)
+  // Prevent default drag behavior on the entire window
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
+
+  // Simple title generation fallback
   async function generateTitleFromPrompt(prompt: string, maxLength: number): Promise<string | null> {
-    if (!prompt) return "New Chat";
-    return prompt.substring(0, Math.min(prompt.length, maxLength));
+    return prompt ? prompt.slice(0, maxLength) : "New Chat";
   }
 
   // --- ACTIONS ---
@@ -267,16 +285,136 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() && !attachedImage) return;
+    if (!input.trim() && !attachedFile) return;
     if (isSending) return;
     if (!user || !user.id) { setError("User not authenticated."); return; }
 
-    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free";
-    if (attachedImage && !modelSupportsImages) {
-      setError("Image attachments are not supported by the selected model.");
+    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
+    if (attachedFile && !modelSupportsImages) {
+      setError("Attachments are not supported by the selected model.");
       return;
     }
     setError(null); setIsSending(true);
+
+    // Handle editing existing message
+    if (editingMessage && editingMessage.id) {
+      try {
+        // Update the existing message
+        await db.messages.update(editingMessage.id, {
+          content: input,
+          // Note: For simplicity, we're not handling attachment changes during edit
+          // You could extend this to handle attachment updates if needed
+        });
+
+        // Get the current thread ID for regenerating AI response
+        const threadId = editingMessage.threadId;
+        
+        // Get all messages in the thread to find messages after the edited one
+        const allMessagesInThread = await db.messages
+          .where('threadId')
+          .equals(threadId)
+          .sortBy('createdAt');
+        
+        // Find the index of the edited message
+        const editedMessageIndex = allMessagesInThread.findIndex(m => m.id === editingMessage.id);
+        
+        if (editedMessageIndex !== -1) {
+          // Delete all assistant messages that came after the edited user message
+          const messagesToDelete = allMessagesInThread.slice(editedMessageIndex + 1);
+          for (const msgToDelete of messagesToDelete) {
+            if (msgToDelete.id) {
+              await db.messages.delete(msgToDelete.id);
+            }
+          }
+          
+          // Get the conversation history up to and including the edited message
+          const historyUpToEdit = allMessagesInThread.slice(0, editedMessageIndex);
+          
+          // Add the updated message to the history
+          const updatedMessage = await db.messages.get(editingMessage.id);
+          if (updatedMessage) {
+            historyUpToEdit.push(updatedMessage);
+          }
+          
+          // Build the conversation for AI
+          const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
+          const historyForAI = buildHistoryForAI(historyUpToEdit, modelSupportsImages);
+          
+          // Create a new assistant message
+          const assistantMessageData: Omit<Message, 'id'> = {
+            threadId: threadId,
+            role: "assistant",
+            content: "",
+            createdAt: new Date(),
+            model: selectedModel,
+            supabase_id: null
+          };
+          const assistantLocalMessageId = await db.messages.add(assistantMessageData as Message);
+          
+          // Clear edit state before making API call
+          setEditingMessage(null);
+          setInput("");
+          setAttachedFile(null);
+          setAttachedPreview(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          
+          // Call the AI API
+          try {
+            const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+            });
+            
+            if (!response.body) throw new Error("Response has no body");
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || "API error");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = "";
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              
+              chunk.split('\n').forEach(line => {
+                if (line.startsWith("0:")) {
+                  try {
+                    fullResponse += JSON.parse(line.substring(2));
+                    if (assistantLocalMessageId) {
+                      db.messages.update(assistantLocalMessageId, { content: fullResponse });
+                    }
+                  } catch (e) {
+                    console.warn("Failed to parse stream line", line, e);
+                  }
+                }
+              });
+            }
+          } catch (apiError: any) {
+            console.error("API error during edit:", apiError);
+            if (assistantLocalMessageId) {
+              await db.messages.update(assistantLocalMessageId, { 
+                content: `Error: ${apiError.message || "Failed to get response"}` 
+              });
+            }
+          }
+        }
+        
+        setIsSending(false);
+        return;
+      } catch (err) {
+        console.error("Failed to update message:", err);
+        setError("Failed to update message.");
+        setIsSending(false);
+        return;
+      }
+    }
 
     let currentLocalThreadId: number;
 
@@ -313,20 +451,10 @@ export default function ChatPage() {
       let uploadedSupabaseUrl: string | null = null;
       let uploadedFileName: string | null = null;
 
-      if (attachedImage && fileInputRef.current?.files?.[0]) {
-        const fileToUpload = fileInputRef.current.files[0];
+      if (attachedFile) {
+        const fileToUpload = attachedFile;
         try {
-          console.log(`Attempting to upload ${fileToUpload.name} to Supabase Storage...`);
-          // ASSUMPTION: uploadFileToSupabaseStorage is an async function that uploads the file
-          // and returns { supabaseUrl: string, fileName: string, error?: string }
-          console.log("heyy");
-          
           const { supabaseUrl, fileName, error: uploadError } = await uploadFileToSupabaseStorage(fileToUpload);
-          console.log("completed upload");
-          
-          // Replace with actual call. For now, using a placeholder to illustrate logic:
-          // const uploadResponse = { supabaseUrl: `https://fake-supabase.url/${fileToUpload.name}`, fileName: fileToUpload.name, error: undefined }; // Placeholder
-          // const { supabaseUrl, fileName, error: uploadError } = await uploadFileToSupabaseStorage(fileToUpload);
 
 
           if (uploadError) {
@@ -337,7 +465,6 @@ export default function ChatPage() {
           }
           uploadedSupabaseUrl = supabaseUrl;
           uploadedFileName = fileName;
-          console.log(`File uploaded to Supabase: ${uploadedSupabaseUrl}`);
           attachmentsForDb = [{ file_name: uploadedFileName, file_url: uploadedSupabaseUrl, supabase_id: null }];
         } catch (uploadErr: any) {
           console.error("Supabase storage upload failed:", uploadErr);
@@ -371,7 +498,7 @@ export default function ChatPage() {
       }
 
       const currentInput = input; setInput("");
-      const currentAttachedImageForPreview = attachedImage; setAttachedImage(null); // Keep using currentAttachedImage for preview reset
+      const currentAttachedFileForPreview = attachedPreview; setAttachedPreview(null); setAttachedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       const assistantMessageData: Omit<Message, 'id'> = {
@@ -381,43 +508,42 @@ export default function ChatPage() {
 
       const historyForAI = (messages || []).map(m => {
         if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
-          // If the attachment URL is a data URL OR the current model (selected for the new message) supports images, send as multi-modal
           if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
-            const contentArray = [];
-            if (m.content.trim()) { // Add text part if text exists
-                contentArray.push({ type: "text", text: m.content });
+            const contentArray = [] as any[];
+            if (m.content.trim()) {
+              contentArray.push({ type: "text", text: m.content });
             }
-            contentArray.push({ type: "image_url", image_url: { url: m.attachments[0].file_url } });
+            const url = m.attachments[0].file_url;
+            if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+              contentArray.push({ type: "image_url", image_url: { url } });
+            } else {
+              contentArray.push({ type: "file_url", file_url: { url } });
+            }
             return { role: m.role, content: contentArray };
           }
         }
-        // Otherwise, send only text
         return { role: m.role, content: m.content };
       });
 
       const apiRequestBody: any = { model: selectedModel, messages: [...historyForAI] };
       
       const currentUserMessageContentForAI: any = { role: "user" };
-      if (uploadedSupabaseUrl && modelSupportsImages) {
-        const contentArray = [];
+      if (uploadedSupabaseUrl && modelSupportsImages && attachedFile) {
+        const contentArray = [] as any[];
         if (currentInput.trim()) {
-          // This is the part that creates the duplicate text
           contentArray.push({ type: "text", text: currentInput });
         }
-        contentArray.push({
-          type: "image_url",
-          image_url: { url: uploadedSupabaseUrl },
-        });
+        if (attachedFile.type.startsWith('image/')) {
+          contentArray.push({ type: "image_url", image_url: { url: uploadedSupabaseUrl } });
+        } else {
+          contentArray.push({ type: "file_url", file_url: { url: uploadedSupabaseUrl, mime_type: attachedFile.type } });
+        }
         currentUserMessageContentForAI.content = contentArray;
       } else {
-        currentUserMessageContentForAI.content = currentInput; // Only text
+        currentUserMessageContentForAI.content = currentInput;
       }
       apiRequestBody.messages.push(currentUserMessageContentForAI);
 
-      console.log(
-        "FRONTEND: Sending this body to /api/chat:",
-        JSON.stringify(apiRequestBody, null, 2)
-      );
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -505,14 +631,160 @@ export default function ChatPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setAttachedImage(reader.result as string); // Store as data URL for preview
-    reader.readAsDataURL(file);
+    processFile(file);
   };
 
-  const removeAttachedImage = () => {
-    setAttachedImage(null);
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleEditMessage = (msg: Message) => {
+    setEditingMessage(msg);
+    setInput(msg.content);
+    // Clear any attached files when editing
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setInput("");
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const buildHistoryForAI = (msgs: Message[], modelSupportsImages: boolean) => {
+    return msgs.map((m) => {
+      if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
+        if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
+          const contentArray: any[] = [];
+          if (m.content.trim()) {
+            contentArray.push({ type: 'text', text: m.content });
+          }
+          const url = m.attachments[0].file_url;
+          if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+            contentArray.push({ type: 'image_url', image_url: { url } });
+          } else {
+            contentArray.push({ type: 'file_url', file_url: { url } });
+          }
+          return { role: m.role, content: contentArray };
+        }
+      }
+      return { role: m.role, content: m.content };
+    });
+  };
+
+  const handleRegenerate = async (msg: Message) => {
+    if (!messages || !msg.id || isSending) return;
+    const index = messages.findIndex((m) => m.id === msg.id);
+    if (index === -1 || index === 0) return;
+    const historyBefore = messages.slice(0, index);
+    const modelToUse = msg.model || selectedModel;
+    const modelSupportsImages = modelToUse === "meta-llama/llama-4-maverick:free" || modelToUse === "gemini-2.5-flash-preview-05-20";
+    const historyForAI = buildHistoryForAI(historyBefore, modelSupportsImages);
+
+    setIsSending(true);
+    await db.messages.update(msg.id, { content: '' });
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelToUse, messages: historyForAI }),
+      });
+      if (!response.ok || !response.body) throw new Error('API error');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        chunk.split('\n').forEach((line) => {
+          if (line.startsWith('0:')) {
+            try {
+              full += JSON.parse(line.substring(2));
+              db.messages.update(msg.id!, { content: full });
+            } catch (e) {
+              console.warn('parse stream line failed', line, e);
+            }
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error('Regenerate error:', err);
+      await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Helper function to process a File object (used by both file input and drag&drop)
+  const processFile = (file: File) => {
+    if (attachedFile) {
+      setError("Please remove the current file before adding a new one.");
+      return;
+    }
+    
+    setAttachedFile(file);
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => setAttachedPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachedPreview(null);
+    }
+    setError(null); // Clear any previous errors
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragOver to false if we're leaving the drop zone entirely
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (isSending) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    const file = files[0]; // Only handle the first file
+    if (files.length > 1) {
+      setError("Please drop only one file at a time.");
+      return;
+    }
+
+    processFile(file);
   };
 
   // --- RENDER ---
@@ -551,12 +823,49 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 ">
-            <div className="mx-auto max-w-4xl space-y-6">
+        <div 
+          className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-50 drag-overlay">
+              <div className="text-white text-2xl font-semibold bg-blue-600/80 px-6 py-3 rounded-lg backdrop-blur">
+                Drop file here to attach
+              </div>
+            </div>
+          )}
+
+
+          
+          <div className="mx-auto max-w-4xl space-y-6">
+            {/* Welcome message when no messages */}
+            {(!messages || messages.length === 0) && !attachedFile && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="text-white/60 text-lg mb-4">
+                  Welcome to Tweak3 Chat
+                </div>
+                <div className="text-white/40 text-sm">
+                  Start a conversation
+                </div>
+              </div>
+            )}
+            
             {messages?.map((m) => (
             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`message-bubble max-w-xl p-4 rounded-2xl ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'}`}>
-              <div className="font-bold capitalize"><small>{m.role === 'assistant' ? (availableModels.find(am => am.value === m.model)?.displayName || m.model): m.role}</small></div>
+              <div className="flex justify-between items-center">
+                <div className="font-bold capitalize"><small>{m.role === 'assistant' ? (availableModels.find(am => am.value === m.model)?.displayName || m.model): m.role}</small></div>
+                {m.role === 'user' && (
+                  <button type="button" onClick={() => handleEditMessage(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Pencil /></button>
+                )}
+                {m.role === 'assistant' && (
+                  <button type="button" onClick={() => handleRegenerate(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Recycle /></button>
+                )}
+              </div>
               <p style={{ whiteSpace: 'pre-wrap' }}>{m.content}</p>
               {m.attachments && m.attachments.map((att, index) => (
                 <div key={index} className="mt-2">
@@ -574,17 +883,26 @@ export default function ChatPage() {
             </div>
             ))}
             <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
-            </div>
-          
+          </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 z-20">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
             <div className="chat-input-unified rounded-t-2xl p-4">
-              {attachedImage && (
+              {editingMessage && (
+                <div className="mb-2 p-2 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-between">
+                  <span className="text-blue-300 text-sm">Editing message...</span>
+                  <button type="button" onClick={handleCancelEdit} className="text-blue-400 hover:text-blue-300 text-sm">Cancel</button>
+                </div>
+              )}
+              {attachedFile && (
                 <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
-                  <img src={attachedImage} alt="Preview" className="max-h-16 max-w-xs rounded" />
-                  <button type="button" onClick={removeAttachedImage} className="text-red-400 hover:text-red-300"><XSquare /></button>
+                  {attachedPreview ? (
+                    <img src={attachedPreview} alt="Preview" className="max-h-16 max-w-xs rounded" />
+                  ) : (
+                    <span className="text-white text-sm">{attachedFile.name}</span>
+                  )}
+                  <button type="button" onClick={removeAttachedFile} className="text-red-400 hover:text-red-300"><XSquare /></button>
                 </div>
               )}
               <div className="flex items-end space-x-3">
@@ -603,12 +921,12 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none">
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending || editingMessage !== null} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none disabled:opacity-50">
                   <Paperclip />
                 </button>
-                <button type="submit" disabled={isSending || (!input.trim() && !attachedImage)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
-                  {isSending ? <Loader2 /> : <SendHorizonal />} {/* Removed className from Loader2 for now, will address if it's a styled component */}
+                <button type="submit" disabled={isSending || (!input.trim() && !attachedFile)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
+                  {isSending ? <Loader2 /> : (editingMessage ? <span>Update</span> : <SendHorizonal />)} {/* Show "Update" when editing */}
                 </button>
               </div>
             </div>
