@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL; // Ensure this is set in your environment variables
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export async function POST(request: Request) {
   const { userId, getToken } = await auth(); // Get Clerk auth context
@@ -19,8 +20,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not retrieve Supabase token. Ensure JWT template is configured in Clerk.' }, { status: 500 });
     }
 
-    // Initialize Supabase client with the user-specific token
-    const supabase = createClient(supabaseUrl, supabaseToken);
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: 'Supabase environment variables are missing.' }, { status: 500 });
+    }
+
+    // Initialize Supabase client with the anon key and attach the user token via headers
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${supabaseToken}`,
+        },
+      },
+    });
 
     const dataToInsert = {
       // Assuming Supabase 'id' is auto-generated (e.g., UUID by default).
