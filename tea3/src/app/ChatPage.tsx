@@ -188,6 +188,8 @@ export default function ChatPage() {
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
   // Add drag and drop state
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  // Add edit message state
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -293,6 +295,126 @@ export default function ChatPage() {
       return;
     }
     setError(null); setIsSending(true);
+
+    // Handle editing existing message
+    if (editingMessage && editingMessage.id) {
+      try {
+        // Update the existing message
+        await db.messages.update(editingMessage.id, {
+          content: input,
+          // Note: For simplicity, we're not handling attachment changes during edit
+          // You could extend this to handle attachment updates if needed
+        });
+
+        // Get the current thread ID for regenerating AI response
+        const threadId = editingMessage.threadId;
+        
+        // Get all messages in the thread to find messages after the edited one
+        const allMessagesInThread = await db.messages
+          .where('threadId')
+          .equals(threadId)
+          .sortBy('createdAt');
+        
+        // Find the index of the edited message
+        const editedMessageIndex = allMessagesInThread.findIndex(m => m.id === editingMessage.id);
+        
+        if (editedMessageIndex !== -1) {
+          // Delete all assistant messages that came after the edited user message
+          const messagesToDelete = allMessagesInThread.slice(editedMessageIndex + 1);
+          for (const msgToDelete of messagesToDelete) {
+            if (msgToDelete.id) {
+              await db.messages.delete(msgToDelete.id);
+            }
+          }
+          
+          // Get the conversation history up to and including the edited message
+          const historyUpToEdit = allMessagesInThread.slice(0, editedMessageIndex);
+          
+          // Add the updated message to the history
+          const updatedMessage = await db.messages.get(editingMessage.id);
+          if (updatedMessage) {
+            historyUpToEdit.push(updatedMessage);
+          }
+          
+          // Build the conversation for AI
+          const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
+          const historyForAI = buildHistoryForAI(historyUpToEdit, modelSupportsImages);
+          
+          // Create a new assistant message
+          const assistantMessageData: Omit<Message, 'id'> = {
+            threadId: threadId,
+            role: "assistant",
+            content: "",
+            createdAt: new Date(),
+            model: selectedModel,
+            supabase_id: null
+          };
+          const assistantLocalMessageId = await db.messages.add(assistantMessageData as Message);
+          
+          // Clear edit state before making API call
+          setEditingMessage(null);
+          setInput("");
+          setAttachedFile(null);
+          setAttachedPreview(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          
+          // Call the AI API
+          try {
+            const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+            });
+            
+            if (!response.body) throw new Error("Response has no body");
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || "API error");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = "";
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              
+              chunk.split('\n').forEach(line => {
+                if (line.startsWith("0:")) {
+                  try {
+                    fullResponse += JSON.parse(line.substring(2));
+                    if (assistantLocalMessageId) {
+                      db.messages.update(assistantLocalMessageId, { content: fullResponse });
+                    }
+                  } catch (e) {
+                    console.warn("Failed to parse stream line", line, e);
+                  }
+                }
+              });
+            }
+          } catch (apiError: any) {
+            console.error("API error during edit:", apiError);
+            if (assistantLocalMessageId) {
+              await db.messages.update(assistantLocalMessageId, { 
+                content: `Error: ${apiError.message || "Failed to get response"}` 
+              });
+            }
+          }
+        }
+        
+        setIsSending(false);
+        return;
+      } catch (err) {
+        console.error("Failed to update message:", err);
+        setError("Failed to update message.");
+        setIsSending(false);
+        return;
+      }
+    }
 
     let currentLocalThreadId: number;
 
@@ -519,10 +641,23 @@ export default function ChatPage() {
   };
 
   const handleEditMessage = (msg: Message) => {
+    setEditingMessage(msg);
     setInput(msg.content);
+    // Clear any attached files when editing
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setInput("");
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const buildHistoryForAI = (msgs: Message[], modelSupportsImages: boolean) => {
@@ -754,6 +889,12 @@ export default function ChatPage() {
         <div className="fixed bottom-0 left-0 right-0 z-20">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
             <div className="chat-input-unified rounded-t-2xl p-4">
+              {editingMessage && (
+                <div className="mb-2 p-2 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-between">
+                  <span className="text-blue-300 text-sm">Editing message...</span>
+                  <button type="button" onClick={handleCancelEdit} className="text-blue-400 hover:text-blue-300 text-sm">Cancel</button>
+                </div>
+              )}
               {attachedFile && (
                 <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
                   {attachedPreview ? (
@@ -781,11 +922,11 @@ export default function ChatPage() {
                   }}
                 />
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none">
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending || editingMessage !== null} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none disabled:opacity-50">
                   <Paperclip />
                 </button>
                 <button type="submit" disabled={isSending || (!input.trim() && !attachedFile)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
-                  {isSending ? <Loader2 /> : <SendHorizonal />} {/* Removed className from Loader2 for now, will address if it's a styled component */}
+                  {isSending ? <Loader2 /> : (editingMessage ? <span>Update</span> : <SendHorizonal />)} {/* Show "Update" when editing */}
                 </button>
               </div>
             </div>
