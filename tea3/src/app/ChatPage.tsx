@@ -14,6 +14,8 @@ const SendHorizonal = () => <span>Send</span>;
 const Paperclip = () => <span>Attach</span>;
 const XSquare = () => <span>X</span>;
 const Loader2 = () => <span>Loading...</span>;
+const Pencil = () => <span>Edit</span>;
+const Recycle = () => <span>Regen</span>;
 
 interface AiModel {
   value: string;
@@ -516,6 +518,78 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleEditMessage = (msg: Message) => {
+    setInput(msg.content);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const buildHistoryForAI = (msgs: Message[], modelSupportsImages: boolean) => {
+    return msgs.map((m) => {
+      if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
+        if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
+          const contentArray: any[] = [];
+          if (m.content.trim()) {
+            contentArray.push({ type: 'text', text: m.content });
+          }
+          const url = m.attachments[0].file_url;
+          if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+            contentArray.push({ type: 'image_url', image_url: { url } });
+          } else {
+            contentArray.push({ type: 'file_url', file_url: { url } });
+          }
+          return { role: m.role, content: contentArray };
+        }
+      }
+      return { role: m.role, content: m.content };
+    });
+  };
+
+  const handleRegenerate = async (msg: Message) => {
+    if (!messages || !msg.id || isSending) return;
+    const index = messages.findIndex((m) => m.id === msg.id);
+    if (index === -1 || index === 0) return;
+    const historyBefore = messages.slice(0, index);
+    const modelToUse = msg.model || selectedModel;
+    const modelSupportsImages = modelToUse === "meta-llama/llama-4-maverick:free" || modelToUse === "gemini-2.5-flash-preview-05-20";
+    const historyForAI = buildHistoryForAI(historyBefore, modelSupportsImages);
+
+    setIsSending(true);
+    await db.messages.update(msg.id, { content: '' });
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelToUse, messages: historyForAI }),
+      });
+      if (!response.ok || !response.body) throw new Error('API error');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        chunk.split('\n').forEach((line) => {
+          if (line.startsWith('0:')) {
+            try {
+              full += JSON.parse(line.substring(2));
+              db.messages.update(msg.id!, { content: full });
+            } catch (e) {
+              console.warn('parse stream line failed', line, e);
+            }
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error('Regenerate error:', err);
+      await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   // Helper function to process a File object (used by both file input and drag&drop)
   const processFile = (file: File) => {
     if (attachedFile) {
@@ -648,7 +722,15 @@ export default function ChatPage() {
             {messages?.map((m) => (
             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`message-bubble max-w-xl p-4 rounded-2xl ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'}`}>
-              <div className="font-bold capitalize"><small>{m.role === 'assistant' ? (availableModels.find(am => am.value === m.model)?.displayName || m.model): m.role}</small></div>
+              <div className="flex justify-between items-center">
+                <div className="font-bold capitalize"><small>{m.role === 'assistant' ? (availableModels.find(am => am.value === m.model)?.displayName || m.model): m.role}</small></div>
+                {m.role === 'user' && (
+                  <button type="button" onClick={() => handleEditMessage(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Pencil /></button>
+                )}
+                {m.role === 'assistant' && (
+                  <button type="button" onClick={() => handleRegenerate(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Recycle /></button>
+                )}
+              </div>
               <p style={{ whiteSpace: 'pre-wrap' }}>{m.content}</p>
               {m.attachments && m.attachments.map((att, index) => (
                 <div key={index} className="mt-2">

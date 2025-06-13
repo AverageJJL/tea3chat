@@ -1,8 +1,8 @@
 "use client";
 
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "./db"; 
+import { db } from "./db";
 
 interface SidebarProps {
   userId: string;
@@ -11,6 +11,7 @@ interface SidebarProps {
 
 export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const { threadId: currentThreadIdParam } = useParams<{ threadId?: string }>();
+  const navigate = useNavigate();
 
   const threads = useLiveQuery(
     async () => {
@@ -24,6 +25,16 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     [userId],
     [] 
   );
+
+  const handleDeleteThread = async (id: number) => {
+    const confirmDelete = confirm('Delete this chat?');
+    if (!confirmDelete) return;
+    await db.messages.where('threadId').equals(id).delete();
+    await db.threads.delete(id);
+    if (currentThreadIdParam === id.toString()) {
+      navigate('/chat');
+    }
+  };
 
   if (!userId) {
     return (
@@ -46,18 +57,25 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         <nav className="flex-grow overflow-y-auto custom-scrollbar-thin pr-1">
           <ul className="space-y-1">
             {threads.map((thread) => (
-              <li key={thread.id}>
+              <li key={thread.id} className="flex items-center justify-between">
                 <Link
                   to={`/chat/${thread.id}`}
-                  className={`block px-3 py-2 rounded-lg text-sm truncate transition-colors
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm truncate transition-colors
                     ${currentThreadIdParam === thread.id?.toString()
                       ? "bg-white/20 text-white font-semibold"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                     }`}
-                  title={thread.title} 
+                  title={thread.title}
                 >
                   {thread.title}
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteThread(thread.id!)}
+                  className="ml-1 text-red-400 hover:text-red-300 text-xs"
+                >
+                  <span>&times;</span>
+                </button>
               </li>
             ))}
           </ul>
