@@ -187,7 +187,10 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
-  const [attachedImage, setAttachedImage] = useState<string | null>(null); // This is a base64 data URL for preview
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  // Add drag and drop state
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -201,7 +204,9 @@ export default function ChatPage() {
         const data = await response.json();
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
-          setSelectedModel(data.models[0].value); // Default to first model
+          // Default to Gemini model, fallback to first model if Gemini not available
+          const geminiModel = data.models.find((model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20");
+          setSelectedModel(geminiModel ? geminiModel.value : data.models[0].value);
         }
       } catch (err: any) {
         setError(err.message || "Error loading models.");
@@ -235,6 +240,21 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Prevent default drag behavior on the entire window
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
+
   // Title Generation (Placeholder - assuming it exists elsewhere or is simple)
   async function generateTitleFromPrompt(prompt: string, maxLength: number): Promise<string | null> {
     if (!prompt) return "New Chat";
@@ -267,13 +287,13 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() && !attachedImage) return;
+    if (!input.trim() && !attachedFile) return;
     if (isSending) return;
     if (!user || !user.id) { setError("User not authenticated."); return; }
 
-    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free";
-    if (attachedImage && !modelSupportsImages) {
-      setError("Image attachments are not supported by the selected model.");
+    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
+    if (attachedFile && !modelSupportsImages) {
+      setError("Attachments are not supported by the selected model.");
       return;
     }
     setError(null); setIsSending(true);
@@ -313,8 +333,8 @@ export default function ChatPage() {
       let uploadedSupabaseUrl: string | null = null;
       let uploadedFileName: string | null = null;
 
-      if (attachedImage && fileInputRef.current?.files?.[0]) {
-        const fileToUpload = fileInputRef.current.files[0];
+      if (attachedFile) {
+        const fileToUpload = attachedFile;
         try {
           console.log(`Attempting to upload ${fileToUpload.name} to Supabase Storage...`);
           // ASSUMPTION: uploadFileToSupabaseStorage is an async function that uploads the file
@@ -371,7 +391,7 @@ export default function ChatPage() {
       }
 
       const currentInput = input; setInput("");
-      const currentAttachedImageForPreview = attachedImage; setAttachedImage(null); // Keep using currentAttachedImage for preview reset
+      const currentAttachedFileForPreview = attachedPreview; setAttachedPreview(null); setAttachedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       const assistantMessageData: Omit<Message, 'id'> = {
@@ -381,36 +401,39 @@ export default function ChatPage() {
 
       const historyForAI = (messages || []).map(m => {
         if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
-          // If the attachment URL is a data URL OR the current model (selected for the new message) supports images, send as multi-modal
           if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
-            const contentArray = [];
-            if (m.content.trim()) { // Add text part if text exists
-                contentArray.push({ type: "text", text: m.content });
+            const contentArray = [] as any[];
+            if (m.content.trim()) {
+              contentArray.push({ type: "text", text: m.content });
             }
-            contentArray.push({ type: "image_url", image_url: { url: m.attachments[0].file_url } });
+            const url = m.attachments[0].file_url;
+            if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+              contentArray.push({ type: "image_url", image_url: { url } });
+            } else {
+              contentArray.push({ type: "file_url", file_url: { url } });
+            }
             return { role: m.role, content: contentArray };
           }
         }
-        // Otherwise, send only text
         return { role: m.role, content: m.content };
       });
 
       const apiRequestBody: any = { model: selectedModel, messages: [...historyForAI] };
       
       const currentUserMessageContentForAI: any = { role: "user" };
-      if (uploadedSupabaseUrl && modelSupportsImages) {
-        const contentArray = [];
+      if (uploadedSupabaseUrl && modelSupportsImages && attachedFile) {
+        const contentArray = [] as any[];
         if (currentInput.trim()) {
-          // This is the part that creates the duplicate text
           contentArray.push({ type: "text", text: currentInput });
         }
-        contentArray.push({
-          type: "image_url",
-          image_url: { url: uploadedSupabaseUrl },
-        });
+        if (attachedFile.type.startsWith('image/')) {
+          contentArray.push({ type: "image_url", image_url: { url: uploadedSupabaseUrl } });
+        } else {
+          contentArray.push({ type: "file_url", file_url: { url: uploadedSupabaseUrl, mime_type: attachedFile.type } });
+        }
         currentUserMessageContentForAI.content = contentArray;
       } else {
-        currentUserMessageContentForAI.content = currentInput; // Only text
+        currentUserMessageContentForAI.content = currentInput;
       }
       apiRequestBody.messages.push(currentUserMessageContentForAI);
 
@@ -505,14 +528,75 @@ export default function ChatPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setAttachedImage(reader.result as string); // Store as data URL for preview
-    reader.readAsDataURL(file);
+    processFile(file);
   };
 
-  const removeAttachedImage = () => {
-    setAttachedImage(null);
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Helper function to process a File object (used by both file input and drag&drop)
+  const processFile = (file: File) => {
+    if (attachedFile) {
+      setError("Please remove the current file before adding a new one.");
+      return;
+    }
+    
+    setAttachedFile(file);
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => setAttachedPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachedPreview(null);
+    }
+    setError(null); // Clear any previous errors
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragOver to false if we're leaving the drop zone entirely
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (isSending) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    const file = files[0]; // Only handle the first file
+    if (files.length > 1) {
+      setError("Please drop only one file at a time.");
+      return;
+    }
+
+    processFile(file);
   };
 
   // --- RENDER ---
@@ -551,8 +635,37 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 ">
-            <div className="mx-auto max-w-4xl space-y-6">
+        <div 
+          className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-50 drag-overlay">
+              <div className="text-white text-2xl font-semibold bg-blue-600/80 px-6 py-3 rounded-lg backdrop-blur">
+                Drop file here to attach
+              </div>
+            </div>
+          )}
+
+
+          
+          <div className="mx-auto max-w-4xl space-y-6">
+            {/* Welcome message when no messages */}
+            {(!messages || messages.length === 0) && !attachedFile && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="text-white/60 text-lg mb-4">
+                  Welcome to Tweak3 Chat
+                </div>
+                <div className="text-white/40 text-sm">
+                  Start a conversation
+                </div>
+              </div>
+            )}
+            
             {messages?.map((m) => (
             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`message-bubble max-w-xl p-4 rounded-2xl ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'}`}>
@@ -574,17 +687,20 @@ export default function ChatPage() {
             </div>
             ))}
             <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
-            </div>
-          
+          </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 z-20">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
             <div className="chat-input-unified rounded-t-2xl p-4">
-              {attachedImage && (
+              {attachedFile && (
                 <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
-                  <img src={attachedImage} alt="Preview" className="max-h-16 max-w-xs rounded" />
-                  <button type="button" onClick={removeAttachedImage} className="text-red-400 hover:text-red-300"><XSquare /></button>
+                  {attachedPreview ? (
+                    <img src={attachedPreview} alt="Preview" className="max-h-16 max-w-xs rounded" />
+                  ) : (
+                    <span className="text-white text-sm">{attachedFile.name}</span>
+                  )}
+                  <button type="button" onClick={removeAttachedFile} className="text-red-400 hover:text-red-300"><XSquare /></button>
                 </div>
               )}
               <div className="flex items-end space-x-3">
@@ -603,11 +719,11 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none">
                   <Paperclip />
                 </button>
-                <button type="submit" disabled={isSending || (!input.trim() && !attachedImage)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
+                <button type="submit" disabled={isSending || (!input.trim() && !attachedFile)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
                   {isSending ? <Loader2 /> : <SendHorizonal />} {/* Removed className from Loader2 for now, will address if it's a styled component */}
                 </button>
               </div>
