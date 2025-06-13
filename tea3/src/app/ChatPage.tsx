@@ -1,21 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useUser } from '@clerk/nextjs';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Thread, Message, MessageAttachment } from './db'; // Ensure MessageAttachment is exported from db.ts
-import { uploadFileToSupabaseStorage } from './supabaseStorage'; // ASSUMPTION: Create and import this utility
+import { uploadFileToSupabaseStorage } from './supabaseStorage';
 import Sidebar from './Sidebar';
-// import { SendHorizonal, Paperclip, XSquare, Loader2, Bot, User } from 'lucide-react'; // Assuming lucide-react for icons
+// import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
 // Placeholder for icons if lucide-react is not used or to avoid import errors
 const SendHorizonal = () => <span>Send</span>;
 const Paperclip = () => <span>Attach</span>;
 const XSquare = () => <span>X</span>;
 const Loader2 = () => <span>Loading...</span>;
-const Bot = () => <span>Bot</span>;
-const User = () => <span>User</span>;
 
 interface AiModel {
   value: string;
@@ -78,7 +76,6 @@ async function syncFullThreadToBackend(payload: FullThreadSyncPayload): Promise<
       throw new Error(errorData.error || `Failed to sync full thread: ${response.statusText}`);
     }
     const result = await response.json();
-    console.log("Full thread synced to backend:", result);
 
     if (result.success && result.data) {
       const syncedSupabaseThread = result.data.thread;
@@ -109,7 +106,6 @@ async function fetchAndStoreCloudData() {
     try { await db.open(); } catch (e) { console.error("Failed to open Dexie DB:", e); return; }
   }
   try {
-    console.log("Attempting to fetch data from Supabase backend...");
     const response = await fetch('/api/sync');
     if (!response.ok) {
       const errorData = await response.json();
@@ -168,7 +164,6 @@ async function fetchAndStoreCloudData() {
           }
         }
       });
-      console.log("Data synced from Supabase and stored locally.");
     } else if (!cloudFetchResult.success) {
       console.error("Cloud sync failed:", cloudFetchResult.error);
     }
@@ -255,10 +250,9 @@ export default function ChatPage() {
     };
   }, []);
 
-  // Title Generation (Placeholder - assuming it exists elsewhere or is simple)
+  // Simple title generation fallback
   async function generateTitleFromPrompt(prompt: string, maxLength: number): Promise<string | null> {
-    if (!prompt) return "New Chat";
-    return prompt.substring(0, Math.min(prompt.length, maxLength));
+    return prompt ? prompt.slice(0, maxLength) : "New Chat";
   }
 
   // --- ACTIONS ---
@@ -336,17 +330,7 @@ export default function ChatPage() {
       if (attachedFile) {
         const fileToUpload = attachedFile;
         try {
-          console.log(`Attempting to upload ${fileToUpload.name} to Supabase Storage...`);
-          // ASSUMPTION: uploadFileToSupabaseStorage is an async function that uploads the file
-          // and returns { supabaseUrl: string, fileName: string, error?: string }
-          console.log("heyy");
-          
           const { supabaseUrl, fileName, error: uploadError } = await uploadFileToSupabaseStorage(fileToUpload);
-          console.log("completed upload");
-          
-          // Replace with actual call. For now, using a placeholder to illustrate logic:
-          // const uploadResponse = { supabaseUrl: `https://fake-supabase.url/${fileToUpload.name}`, fileName: fileToUpload.name, error: undefined }; // Placeholder
-          // const { supabaseUrl, fileName, error: uploadError } = await uploadFileToSupabaseStorage(fileToUpload);
 
 
           if (uploadError) {
@@ -357,7 +341,6 @@ export default function ChatPage() {
           }
           uploadedSupabaseUrl = supabaseUrl;
           uploadedFileName = fileName;
-          console.log(`File uploaded to Supabase: ${uploadedSupabaseUrl}`);
           attachmentsForDb = [{ file_name: uploadedFileName, file_url: uploadedSupabaseUrl, supabase_id: null }];
         } catch (uploadErr: any) {
           console.error("Supabase storage upload failed:", uploadErr);
@@ -437,10 +420,6 @@ export default function ChatPage() {
       }
       apiRequestBody.messages.push(currentUserMessageContentForAI);
 
-      console.log(
-        "FRONTEND: Sending this body to /api/chat:",
-        JSON.stringify(apiRequestBody, null, 2)
-      );
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
