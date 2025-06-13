@@ -187,7 +187,8 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
-  const [attachedImage, setAttachedImage] = useState<string | null>(null); // This is a base64 data URL for preview
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -267,13 +268,13 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() && !attachedImage) return;
+    if (!input.trim() && !attachedFile) return;
     if (isSending) return;
     if (!user || !user.id) { setError("User not authenticated."); return; }
 
-    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free";
-    if (attachedImage && !modelSupportsImages) {
-      setError("Image attachments are not supported by the selected model.");
+    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
+    if (attachedFile && !modelSupportsImages) {
+      setError("Attachments are not supported by the selected model.");
       return;
     }
     setError(null); setIsSending(true);
@@ -313,7 +314,7 @@ export default function ChatPage() {
       let uploadedSupabaseUrl: string | null = null;
       let uploadedFileName: string | null = null;
 
-      if (attachedImage && fileInputRef.current?.files?.[0]) {
+      if (attachedFile && fileInputRef.current?.files?.[0]) {
         const fileToUpload = fileInputRef.current.files[0];
         try {
           console.log(`Attempting to upload ${fileToUpload.name} to Supabase Storage...`);
@@ -371,7 +372,7 @@ export default function ChatPage() {
       }
 
       const currentInput = input; setInput("");
-      const currentAttachedImageForPreview = attachedImage; setAttachedImage(null); // Keep using currentAttachedImage for preview reset
+      const currentAttachedFileForPreview = attachedPreview; setAttachedPreview(null); setAttachedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       const assistantMessageData: Omit<Message, 'id'> = {
@@ -381,36 +382,39 @@ export default function ChatPage() {
 
       const historyForAI = (messages || []).map(m => {
         if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
-          // If the attachment URL is a data URL OR the current model (selected for the new message) supports images, send as multi-modal
           if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
-            const contentArray = [];
-            if (m.content.trim()) { // Add text part if text exists
-                contentArray.push({ type: "text", text: m.content });
+            const contentArray = [] as any[];
+            if (m.content.trim()) {
+              contentArray.push({ type: "text", text: m.content });
             }
-            contentArray.push({ type: "image_url", image_url: { url: m.attachments[0].file_url } });
+            const url = m.attachments[0].file_url;
+            if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+              contentArray.push({ type: "image_url", image_url: { url } });
+            } else {
+              contentArray.push({ type: "file_url", file_url: { url } });
+            }
             return { role: m.role, content: contentArray };
           }
         }
-        // Otherwise, send only text
         return { role: m.role, content: m.content };
       });
 
       const apiRequestBody: any = { model: selectedModel, messages: [...historyForAI] };
       
       const currentUserMessageContentForAI: any = { role: "user" };
-      if (uploadedSupabaseUrl && modelSupportsImages) {
-        const contentArray = [];
+      if (uploadedSupabaseUrl && modelSupportsImages && attachedFile) {
+        const contentArray = [] as any[];
         if (currentInput.trim()) {
-          // This is the part that creates the duplicate text
           contentArray.push({ type: "text", text: currentInput });
         }
-        contentArray.push({
-          type: "image_url",
-          image_url: { url: uploadedSupabaseUrl },
-        });
+        if (attachedFile.type.startsWith('image/')) {
+          contentArray.push({ type: "image_url", image_url: { url: uploadedSupabaseUrl } });
+        } else {
+          contentArray.push({ type: "file_url", file_url: { url: uploadedSupabaseUrl, mime_type: attachedFile.type } });
+        }
         currentUserMessageContentForAI.content = contentArray;
       } else {
-        currentUserMessageContentForAI.content = currentInput; // Only text
+        currentUserMessageContentForAI.content = currentInput;
       }
       apiRequestBody.messages.push(currentUserMessageContentForAI);
 
@@ -505,13 +509,19 @@ export default function ChatPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setAttachedImage(reader.result as string); // Store as data URL for preview
-    reader.readAsDataURL(file);
+    setAttachedFile(file);
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => setAttachedPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachedPreview(null);
+    }
   };
 
-  const removeAttachedImage = () => {
-    setAttachedImage(null);
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -581,10 +591,14 @@ export default function ChatPage() {
         <div className="fixed bottom-0 left-0 right-0 z-20">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
             <div className="chat-input-unified rounded-t-2xl p-4">
-              {attachedImage && (
+              {attachedFile && (
                 <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
-                  <img src={attachedImage} alt="Preview" className="max-h-16 max-w-xs rounded" />
-                  <button type="button" onClick={removeAttachedImage} className="text-red-400 hover:text-red-300"><XSquare /></button>
+                  {attachedPreview ? (
+                    <img src={attachedPreview} alt="Preview" className="max-h-16 max-w-xs rounded" />
+                  ) : (
+                    <span className="text-white text-sm">{attachedFile.name}</span>
+                  )}
+                  <button type="button" onClick={removeAttachedFile} className="text-red-400 hover:text-red-300"><XSquare /></button>
                 </div>
               )}
               <div className="flex items-end space-x-3">
@@ -603,11 +617,11 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none">
                   <Paperclip />
                 </button>
-                <button type="submit" disabled={isSending || (!input.trim() && !attachedImage)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
+                <button type="submit" disabled={isSending || (!input.trim() && !attachedFile)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
                   {isSending ? <Loader2 /> : <SendHorizonal />} {/* Removed className from Loader2 for now, will address if it's a styled component */}
                 </button>
               </div>

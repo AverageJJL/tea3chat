@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
+import { GoogleGenAI } from "@google/genai";
 
 // Groq provider
 const groq = createOpenAI({
@@ -12,6 +13,9 @@ const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
 });
+
+// Gemini provider
+const geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Model to provider mapping
 const MODEL_PROVIDERS = {
@@ -29,6 +33,11 @@ const MODEL_PROVIDERS = {
     provider: openrouter,
     displayName: "LLaMA 4 Maverick (OpenRouter)",
     supportsImages: true,
+  },
+  "gemini-2.5-flash-preview-05-20": {
+    displayName: "Gemini 2.5 Flash (Google)",
+    supportsImages: true,
+    isGemini: true,
   },
 } as const;
 
@@ -66,7 +75,13 @@ export async function POST(req: Request) {
       });
     }
 
-    // If provider doesn't support images, ensure none are present in the payload
+    // If provider doesn't support attachments, ensure none are present
+    const containsAttachment = messages.some((msg: any) => {
+      if (Array.isArray(msg?.content)) {
+        return msg.content.some((part: any) => part?.type === 'image_url' || part?.type === 'file_url');
+      }
+      return false;
+    });
     const containsImage = messages.some((msg: any) => {
       if (Array.isArray(msg?.content)) {
         return msg.content.some((part: any) => part?.type === 'image_url');
@@ -74,8 +89,8 @@ export async function POST(req: Request) {
       return false;
     });
 
-    if (containsImage && !modelConfig.supportsImages) {
-      return new Response(JSON.stringify({ error: "The selected model does not support image attachments." }), {
+    if (containsAttachment && !modelConfig.supportsImages) {
+      return new Response(JSON.stringify({ error: "The selected model does not support attachments." }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -87,7 +102,7 @@ export async function POST(req: Request) {
     // and then convert the single response into the newline-delimited streaming format
     // expected by the frontend.
 
-    if (containsImage) {
+    if (containsImage && modelConfig.provider === openrouter) {
       const payload = {
         model,
         stream: false,
@@ -143,8 +158,43 @@ export async function POST(req: Request) {
     console.log("Model config:", modelConfig);
     console.log("Messages:", JSON.stringify(messages, null, 2));
 
+    if (modelConfig.isGemini) {
+      const geminiMessages = messages.map((m: any) => {
+        const role = m.role === 'assistant' ? 'model' : 'user';
+        let parts: any[] = [];
+        if (Array.isArray(m.content)) {
+          for (const part of m.content) {
+            if (part.type === 'text') parts.push({ text: part.text });
+            else if (part.type === 'image_url') parts.push({ fileData: { fileUri: part.image_url.url, mimeType: 'application/octet-stream' } });
+            else if (part.type === 'file_url') parts.push({ fileData: { fileUri: part.file_url.url, mimeType: part.file_url.mime_type || 'application/octet-stream' } });
+          }
+        } else {
+          parts = [{ text: m.content }];
+        }
+        return { role, parts };
+      });
+
+      const stream = await geminiClient.models.generateContentStream({
+        model,
+        contents: geminiMessages,
+      });
+
+      const encoder = new TextEncoder();
+      const respStream = new ReadableStream({
+        async start(controller) {
+          for await (const chunk of stream) {
+            const text = chunk.text || '';
+            controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(respStream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+
     const result = await streamText({
-      model: modelConfig.provider(model),
+      model: modelConfig.provider!(model),
       messages,
     });
 
