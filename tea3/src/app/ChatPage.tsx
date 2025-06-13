@@ -189,6 +189,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  // Add drag and drop state
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -202,7 +204,9 @@ export default function ChatPage() {
         const data = await response.json();
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
-          setSelectedModel(data.models[0].value); // Default to first model
+          // Default to Gemini model, fallback to first model if Gemini not available
+          const geminiModel = data.models.find((model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20");
+          setSelectedModel(geminiModel ? geminiModel.value : data.models[0].value);
         }
       } catch (err: any) {
         setError(err.message || "Error loading models.");
@@ -235,6 +239,21 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Prevent default drag behavior on the entire window
+  useEffect(() => {
+    const preventDefault = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
+    };
+  }, []);
 
   // Title Generation (Placeholder - assuming it exists elsewhere or is simple)
   async function generateTitleFromPrompt(prompt: string, maxLength: number): Promise<string | null> {
@@ -314,8 +333,8 @@ export default function ChatPage() {
       let uploadedSupabaseUrl: string | null = null;
       let uploadedFileName: string | null = null;
 
-      if (attachedFile && fileInputRef.current?.files?.[0]) {
-        const fileToUpload = fileInputRef.current.files[0];
+      if (attachedFile) {
+        const fileToUpload = attachedFile;
         try {
           console.log(`Attempting to upload ${fileToUpload.name} to Supabase Storage...`);
           // ASSUMPTION: uploadFileToSupabaseStorage is an async function that uploads the file
@@ -509,6 +528,22 @@ export default function ChatPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    processFile(file);
+  };
+
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Helper function to process a File object (used by both file input and drag&drop)
+  const processFile = (file: File) => {
+    if (attachedFile) {
+      setError("Please remove the current file before adding a new one.");
+      return;
+    }
+    
     setAttachedFile(file);
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
@@ -517,12 +552,51 @@ export default function ChatPage() {
     } else {
       setAttachedPreview(null);
     }
+    setError(null); // Clear any previous errors
   };
 
-  const removeAttachedFile = () => {
-    setAttachedFile(null);
-    setAttachedPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragOver to false if we're leaving the drop zone entirely
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (isSending) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    const file = files[0]; // Only handle the first file
+    if (files.length > 1) {
+      setError("Please drop only one file at a time.");
+      return;
+    }
+
+    processFile(file);
   };
 
   // --- RENDER ---
@@ -561,8 +635,37 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 ">
-            <div className="mx-auto max-w-4xl space-y-6">
+        <div 
+          className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-50 drag-overlay">
+              <div className="text-white text-2xl font-semibold bg-blue-600/80 px-6 py-3 rounded-lg backdrop-blur">
+                Drop file here to attach
+              </div>
+            </div>
+          )}
+
+
+          
+          <div className="mx-auto max-w-4xl space-y-6">
+            {/* Welcome message when no messages */}
+            {(!messages || messages.length === 0) && !attachedFile && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="text-white/60 text-lg mb-4">
+                  Welcome to Tweak3 Chat
+                </div>
+                <div className="text-white/40 text-sm">
+                  Start a conversation
+                </div>
+              </div>
+            )}
+            
             {messages?.map((m) => (
             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`message-bubble max-w-xl p-4 rounded-2xl ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'}`}>
@@ -584,8 +687,7 @@ export default function ChatPage() {
             </div>
             ))}
             <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
-            </div>
-          
+          </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 z-20">

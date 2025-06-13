@@ -14,8 +14,54 @@ const openrouter = createOpenAI({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
-// Gemini provider
-const geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Gemini provider  
+const geminiClient = new GoogleGenAI({ 
+  apiKey: process.env.GEMINI_API_KEY!
+});
+
+// Helper function to fetch and convert external files to base64
+async function fetchFileAsBase64(url: string, originalMimeType?: string): Promise<{ data: string; mimeType: string }> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.status}`);
+    }
+    
+    const buffer = await response.arrayBuffer();
+    const base64Data = Buffer.from(buffer).toString('base64');
+    
+    // Try to get mime type from response headers, fallback to original or infer from URL
+    let mimeType = response.headers.get('content-type') || originalMimeType || 'application/octet-stream';
+    
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      // Infer from URL extension if content-type is not available
+      const extension = url.split('.').pop()?.toLowerCase();
+      switch (extension) {
+        case 'png': mimeType = 'image/png'; break;
+        case 'jpg': case 'jpeg': mimeType = 'image/jpeg'; break;
+        case 'gif': mimeType = 'image/gif'; break;
+        case 'webp': mimeType = 'image/webp'; break;
+        case 'pdf': mimeType = 'application/pdf'; break;
+        case 'txt': mimeType = 'text/plain'; break;
+        case 'json': mimeType = 'application/json'; break;
+        case 'xml': mimeType = 'application/xml'; break;
+        case 'csv': mimeType = 'text/csv'; break;
+        case 'rtf': mimeType = 'application/rtf'; break;
+        default: mimeType = originalMimeType || 'application/octet-stream'; break;
+      }
+    }
+    
+    return { data: base64Data, mimeType };
+  } catch (error) {
+    console.error('Error fetching file:', error);
+    throw new Error(`Failed to fetch file from URL: ${url}`);
+  }
+}
+
+// Legacy function for backward compatibility
+async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string }> {
+  return fetchFileAsBase64(url, 'image/jpeg');
+}
 
 // Model to provider mapping
 const MODEL_PROVIDERS = {
@@ -29,15 +75,11 @@ const MODEL_PROVIDERS = {
     displayName: "Qwen 3 235B (OpenRouter)",
     supportsImages: false,
   },
-  "meta-llama/llama-4-maverick:free": {
-    provider: openrouter,
-    displayName: "LLaMA 4 Maverick (OpenRouter)",
-    supportsImages: true,
-  },
+
   "gemini-2.5-flash-preview-05-20": {
+    provider: "google",
     displayName: "Gemini 2.5 Flash (Google)",
     supportsImages: true,
-    isGemini: true,
   },
 } as const;
 
@@ -96,105 +138,139 @@ export async function POST(req: Request) {
       });
     }
 
-    // ----- IMAGE-SAFE HANDLING -----
-    // streamText currently has limited support for multimodal messages (content arrays).
-    // When the payload contains images, we call OpenRouter directly (non-streaming)
-    // and then convert the single response into the newline-delimited streaming format
-    // expected by the frontend.
 
-    if (containsImage && modelConfig.provider === openrouter) {
-      const payload = {
-        model,
-        stream: false,
-        messages,
-      };
-
-      // --- ADD THIS LOG ---
-      console.log(
-        "BACKEND: Sending to OpenRouter:",
-        JSON.stringify(payload, null, 2)
-      );
-
-      // Direct call to OpenRouter
-      const openrouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          // Optional identifying headers (safe defaults)
-          // "HTTP-Referer": "tea3.local",
-          // "X-Title": "Tea3 Chat",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!openrouterResponse.ok) {
-        const errText = await openrouterResponse.text();
-        console.error("OpenRouter error:", errText);
-        return new Response(errText, { status: openrouterResponse.status, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      const json = await openrouterResponse.json();
-      const assistantText = json?.choices?.[0]?.message?.content ?? "";
-
-      // Wrap the assistant text into a compatible text/event-stream-like response
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          // Mimic the streamText prefix "0:" used on the frontend
-          controller.enqueue(encoder.encode(`0:${JSON.stringify(assistantText)}\n`));
-          controller.close();
-        }
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
-    }
 
     console.log("Using model:", model);
     console.log("Model config:", modelConfig);
     console.log("Messages:", JSON.stringify(messages, null, 2));
 
-    if (modelConfig.isGemini) {
-      const geminiMessages = messages.map((m: any) => {
+    if (modelConfig.provider === "google") {
+      // Validate API key
+      if (!process.env.GEMINI_API_KEY) {
+        return new Response(JSON.stringify({ error: "Gemini API key is not configured" }), { 
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const geminiMessages = await Promise.all(messages.map(async (m: any) => {
         const role = m.role === 'assistant' ? 'model' : 'user';
         let parts: any[] = [];
         if (Array.isArray(m.content)) {
           for (const part of m.content) {
-            if (part.type === 'text') parts.push({ text: part.text });
-            else if (part.type === 'image_url') parts.push({ fileData: { fileUri: part.image_url.url, mimeType: 'application/octet-stream' } });
-            else if (part.type === 'file_url') parts.push({ fileData: { fileUri: part.file_url.url, mimeType: part.file_url.mime_type || 'application/octet-stream' } });
+            if (part.type === 'text') {
+              parts.push({ text: part.text });
+            } else if (part.type === 'image_url') {
+              // Handle base64 image data for Gemini
+              const imageUrl = part.image_url.url;
+              if (imageUrl.startsWith('data:')) {
+                // Extract base64 data and mime type from data URL
+                const [mimeInfo, base64Data] = imageUrl.split(',');
+                const mimeType = mimeInfo.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+                parts.push({ 
+                  inlineData: { 
+                    data: base64Data, 
+                    mimeType: mimeType 
+                  } 
+                });
+              } else {
+                // For external URLs, fetch and convert to base64
+                try {
+                  const { data, mimeType } = await fetchImageAsBase64(imageUrl);
+                  parts.push({ 
+                    inlineData: { 
+                      data: data, 
+                      mimeType: mimeType 
+                    } 
+                  });
+                } catch (error) {
+                  console.error('Failed to fetch external image:', error);
+                  // Skip this image part if it fails to fetch
+                }
+              }
+            } else if (part.type === 'file_url') {
+              // Handle file attachments (images, PDFs, and other supported formats)
+              const mimeType = part.file_url.mime_type || 'application/octet-stream';
+              
+              // Gemini supports images, PDFs, and various document formats
+              const supportedTypes = [
+                'image/', 'application/pdf', 'text/', 'application/json',
+                'application/xml', 'application/rtf', 'text/csv'
+              ];
+              
+              const isSupported = supportedTypes.some(type => mimeType.startsWith(type));
+              
+              if (isSupported) {
+                if (part.file_url.url.startsWith('data:')) {
+                  const [mimeInfo, base64Data] = part.file_url.url.split(',');
+                  const actualMimeType = mimeInfo.match(/data:([^;]+)/)?.[1] || mimeType;
+                  parts.push({ 
+                    inlineData: { 
+                      data: base64Data, 
+                      mimeType: actualMimeType 
+                    } 
+                  });
+                } else {
+                  // For external file URLs, fetch and convert to base64
+                  try {
+                    const { data, mimeType: fetchedMimeType } = await fetchFileAsBase64(part.file_url.url, mimeType);
+                    parts.push({ 
+                      inlineData: { 
+                        data: data, 
+                        mimeType: fetchedMimeType 
+                      } 
+                    });
+                  } catch (error) {
+                    console.error('Failed to fetch external file:', error);
+                    // Skip this file part if it fails to fetch
+                  }
+                }
+              }
+            }
           }
         } else {
           parts = [{ text: m.content }];
         }
         return { role, parts };
-      });
+      }));
 
-      const stream = await geminiClient.models.generateContentStream({
-        model,
-        contents: geminiMessages,
-      });
+      try {
+        const stream = await geminiClient.models.generateContentStream({
+          model,
+          contents: geminiMessages,
+        });
 
-      const encoder = new TextEncoder();
-      const respStream = new ReadableStream({
-        async start(controller) {
-          for await (const chunk of stream) {
-            const text = chunk.text || '';
-            controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
-          }
-          controller.close();
-        },
-      });
+        const encoder = new TextEncoder();
+        const respStream = new ReadableStream({
+          async start(controller) {
+            for await (const chunk of stream) {
+              const text = chunk.text || '';
+              controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
+            }
+            controller.close();
+          },
+        });
 
-      return new Response(respStream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        return new Response(respStream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      } catch (geminiError: any) {
+        console.error("Gemini API error:", geminiError);
+        
+        // Handle specific Gemini authentication errors
+        if (geminiError.message?.includes('403') || geminiError.message?.includes('PERMISSION_DENIED')) {
+          return new Response(JSON.stringify({ 
+            error: "Gemini API authentication failed. Please check your API key and ensure it's valid." 
+          }), { 
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        throw geminiError; // Re-throw to be handled by outer catch
+      }
     }
 
     const result = await streamText({
-      model: modelConfig.provider!(model),
+      model: (modelConfig.provider as any)(model),
       messages,
     });
 
