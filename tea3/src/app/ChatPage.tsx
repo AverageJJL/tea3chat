@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useUser } from '@clerk/nextjs';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, Thread, Message, MessageAttachment } from './db'; // Ensure MessageAttachment is exported from db.ts
-import { uploadFileToSupabaseStorage } from './supabaseStorage';
-import Sidebar from './Sidebar';
+import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/nextjs";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db, Thread, Message, MessageAttachment } from "./db"; // Ensure MessageAttachment is exported from db.ts
+import { uploadFileToSupabaseStorage } from "./supabaseStorage";
+import Sidebar from "./Sidebar";
+import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
 // Placeholder for icons if lucide-react is not used or to avoid import errors
@@ -36,61 +37,76 @@ interface FullThreadSyncPayload {
 }
 
 interface SupabaseAttachment {
-  id: string; 
-  messageId: string; 
+  id: string;
+  messageId: string;
   clerk_user_id: string;
   file_name: string;
   file_url: string;
-  uploaded_at: string; 
+  uploaded_at: string;
 }
 
 interface SupabaseMessage {
-  id: string; 
-  threadId: string; 
+  id: string;
+  threadId: string;
   clerk_user_id: string;
   role: "user" | "assistant";
   content: string;
   model?: string;
-  created_at: string; 
+  created_at: string;
   attachments: SupabaseAttachment[];
   // dexie_id?: number | null; // If you decide to send local message ID to backend and get it back
 }
 
 interface SupabaseThread {
-  id: string; 
-  dexie_id: number | null; 
+  id: string;
+  dexie_id: number | null;
   clerk_user_id: string;
   title: string;
-  created_at: string; 
-  updated_at: string; 
+  created_at: string;
+  updated_at: string;
   messages: SupabaseMessage[];
 }
 
-async function syncFullThreadToBackend(payload: FullThreadSyncPayload): Promise<any> {
+async function syncFullThreadToBackend(
+  payload: FullThreadSyncPayload
+): Promise<any> {
   try {
-    const response = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || `Failed to sync full thread: ${response.statusText}`);
+      throw new Error(
+        errorData.error || `Failed to sync full thread: ${response.statusText}`
+      );
     }
     const result = await response.json();
 
     if (result.success && result.data) {
-      const syncedSupabaseThread = result.data.thread;
+      const syncedSupabaseThread = result.data.thread; // Assuming this is the structure from your backend
       const syncedSupabaseMessages = result.data.messages;
 
-      if (syncedSupabaseThread && syncedSupabaseThread.id && payload.threadData.id) {
-        await db.threads.update(payload.threadData.id, { supabase_id: syncedSupabaseThread.id });
+      // Update local thread with Supabase confirmed shared_id
+      // Ensure your backend returns the thread object with a 'shared_id' property
+      if (
+        syncedSupabaseThread &&
+        syncedSupabaseThread.shared_id &&
+        payload.threadData.id
+      ) {
+        await db.threads.update(payload.threadData.id, {
+          supabase_id: syncedSupabaseThread.shared_id,
+        });
       }
 
       if (syncedSupabaseMessages && Array.isArray(syncedSupabaseMessages)) {
         for (const syncedMsg of syncedSupabaseMessages) {
-          if (syncedMsg.dexie_id && syncedMsg.id) { // Assumes backend POST response returns dexie_id for messages
-            await db.messages.update(syncedMsg.dexie_id, { supabase_id: syncedMsg.id });
+          if (syncedMsg.dexie_id && syncedMsg.id) {
+            // Assumes backend POST response returns dexie_id for messages
+            await db.messages.update(syncedMsg.dexie_id, {
+              supabase_id: syncedMsg.id,
+            });
             // TODO: Update attachments in Dexie with their supabase_ids if needed
           }
         }
@@ -105,25 +121,33 @@ async function syncFullThreadToBackend(payload: FullThreadSyncPayload): Promise<
 
 async function fetchAndStoreCloudData() {
   if (!db.isOpen()) {
-    try { await db.open(); } catch (e) { console.error("Failed to open Dexie DB:", e); return; }
+    try {
+      await db.open();
+    } catch (e) {
+      console.error("Failed to open Dexie DB:", e);
+      return;
+    }
   }
   try {
-    const response = await fetch('/api/sync');
+    const response = await fetch("/api/sync");
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || `Failed to fetch data: ${response.statusText}`);
+      throw new Error(
+        errorData.error || `Failed to fetch data: ${response.statusText}`
+      );
     }
     const cloudFetchResult = await response.json();
 
     if (cloudFetchResult.success && cloudFetchResult.data) {
       const supabaseThreads: SupabaseThread[] = cloudFetchResult.data;
 
-      await db.transaction('rw', db.threads, db.messages, async () => {
+      await db.transaction("rw", db.threads, db.messages, async () => {
         for (const remoteThread of supabaseThreads) {
-          let localThreadId: number | undefined;
-          const existingThreadBySupabaseId = await db.threads.get({ supabase_id: remoteThread.id });
+          // let localThreadId: number | undefined;
+          
+          const threadSupabaseId = remoteThread.id;
 
-          const threadPayloadToStore: Omit<Thread, 'id'> = {
+          const threadPayloadToStore: Omit<Thread, "id"> = {
             supabase_id: remoteThread.id,
             userId: remoteThread.clerk_user_id,
             title: remoteThread.title,
@@ -131,40 +155,26 @@ async function fetchAndStoreCloudData() {
             updatedAt: new Date(remoteThread.updated_at),
           };
 
-          if (existingThreadBySupabaseId && existingThreadBySupabaseId.id) {
-            localThreadId = existingThreadBySupabaseId.id;
-            await db.threads.update(localThreadId, threadPayloadToStore);
-          } else {
-            localThreadId = await db.threads.add(threadPayloadToStore as Thread);
-          }
-
-          if (!localThreadId) continue;
+          await db.threads.put(threadPayloadToStore);
 
           for (const remoteMessage of remoteThread.messages) {
-            const localMessageAttachments: MessageAttachment[] = remoteMessage.attachments.map(att => ({
-              supabase_id: att.id,
-              file_name: att.file_name,
-              file_url: att.file_url,
-            }));
-
-            const existingMessageBySupabaseId = await db.messages.get({ supabase_id: remoteMessage.id });
-            const messagePayloadToStore: Omit<Message, 'id'> = {
+            const localMessagePayload: Message = {
               supabase_id: remoteMessage.id,
-              threadId: localThreadId,
+              thread_supabase_id: threadSupabaseId, // Link using the universal ID
               role: remoteMessage.role,
               content: remoteMessage.content,
-              attachments: localMessageAttachments,
+              attachments: remoteMessage.attachments.map((att) => ({
+                supabase_id: att.id,
+                file_name: att.file_name,
+                file_url: att.file_url,
+              })),
               createdAt: new Date(remoteMessage.created_at),
               model: remoteMessage.model,
             };
-
-            if (existingMessageBySupabaseId && existingMessageBySupabaseId.id) {
-              await db.messages.update(existingMessageBySupabaseId.id, messagePayloadToStore);
-            } else {
-              await db.messages.add(messagePayloadToStore as Message);
+            // Use .put() for messages as well.
+            await db.messages.put(localMessagePayload);
             }
-          }
-        }
+          } 
       });
     } else if (!cloudFetchResult.success) {
       console.error("Cloud sync failed:", cloudFetchResult.error);
@@ -175,9 +185,10 @@ async function fetchAndStoreCloudData() {
 }
 
 export default function ChatPage() {
-  const { threadId: routeThreadId } = useParams<{ threadId?: string }>();
+  const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
   const { user, isLoaded: isUserLoaded } = useUser();
+  
   const [availableModels, setAvailableModels] = useState<AiModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoadingModels, setIsLoadingModels] = useState<boolean>(true);
@@ -204,8 +215,12 @@ export default function ChatPage() {
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
           // Default to Gemini model, fallback to first model if Gemini not available
-          const geminiModel = data.models.find((model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20");
-          setSelectedModel(geminiModel ? geminiModel.value : data.models[0].value);
+          const geminiModel = data.models.find(
+            (model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20"
+          );
+          setSelectedModel(
+            geminiModel ? geminiModel.value : data.models[0].value
+          );
         }
       } catch (err: any) {
         setError(err.message || "Error loading models.");
@@ -220,12 +235,13 @@ export default function ChatPage() {
   // --- DATA FETCHING & SYNC ---
   const messages = useLiveQuery(
     () => {
-      if (!routeThreadId) return [];
-      const currentLocalThreadId = parseInt(routeThreadId);
-      if (isNaN(currentLocalThreadId)) return [];
-      return db.messages.where("threadId").equals(currentLocalThreadId).sortBy("createdAt");
+      if (!supabaseThreadId) return [];
+      return db.messages
+          .where("thread_supabase_id")
+          .equals(supabaseThreadId)
+          .sortBy("createdAt");
     },
-    [routeThreadId]
+    [supabaseThreadId]
   );
 
   useEffect(() => {
@@ -245,411 +261,378 @@ export default function ChatPage() {
       e.preventDefault();
     };
 
-    window.addEventListener('dragover', preventDefault);
-    window.addEventListener('drop', preventDefault);
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
 
     return () => {
-      window.removeEventListener('dragover', preventDefault);
-      window.removeEventListener('drop', preventDefault);
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
     };
   }, []);
 
   // Simple title generation fallback
-  async function generateTitleFromPrompt(prompt: string, maxLength: number): Promise<string | null> {
+  async function generateTitleFromPrompt(
+    prompt: string,
+    maxLength: number
+  ): Promise<string | null> {
     return prompt ? prompt.slice(0, maxLength) : "New Chat";
   }
 
   // --- ACTIONS ---
   const handleNewChat = async () => {
     if (!user || !user.id) {
-      setError("User not authenticated."); return;
+      setError("User not authenticated.");
+      return;
     }
     try {
-      const newThreadLocalData: Omit<Thread, 'id'> = {
+      const newThreadSupabaseId = uuidv4(); // Generate shared_id for new thread
+      const newThreadData: Thread = {
+        supabase_id: newThreadSupabaseId,
         userId: user.id,
         title: "New Chat",
         createdAt: new Date(),
         updatedAt: new Date(),
-        supabase_id: null,
       };
-      const newThreadLocalId = await db.threads.add(newThreadLocalData as Thread);
-      const newThreadForSync = await db.threads.get(newThreadLocalId);
-      if (newThreadForSync) {
-        try {
-          await syncFullThreadToBackend({ threadData: newThreadForSync, messagesData: [], attachmentsData: [] });
-        } catch (e) { console.error("Sync failed for new thread:", e); }
+      await db.threads.put(newThreadData);
+
+      await syncFullThreadToBackend({
+        threadData: newThreadData,
+        messagesData: [],
+        attachmentsData: [],
+      });
+
+      
+      
+      navigate(`/chat/${newThreadSupabaseId}`);
+    } catch (err) {
+      console.error("Failed to create new chat:", err);
+      setError("Failed to create chat.");
+    }
+  };
+
+  // Moved buildHistoryForAI before handleSubmit to resolve declaration error
+  const buildHistoryForAI = (
+    msgs: Message[],
+    modelSupportsImagesFlag: boolean
+  ) => {
+    return msgs.map((m) => {
+      if (
+        m.attachments &&
+        m.attachments.length > 0 &&
+        m.attachments[0].file_url
+      ) {
+        // Check if model supports images OR if the attachment is a data URL (local preview)
+        if (
+          modelSupportsImagesFlag ||
+          m.attachments[0].file_url.startsWith("data:")
+        ) {
+          const contentArray: any[] = [];
+          if (m.content && m.content.trim()) {
+            // Ensure content is not empty before adding
+            contentArray.push({ type: "text", text: m.content });
+          }
+          const url = m.attachments[0].file_url;
+          // Basic check for image types for image_url, otherwise treat as generic file_url
+          if (url.match(/^data:image|\\.(png|jpe?g|gif|webp)$/i)) {
+            contentArray.push({ type: "image_url", image_url: { url } });
+          } else {
+            // For non-image files or when model doesn't support images but we have a URL
+            contentArray.push({ type: "file_url", file_url: { url } });
+          }
+          return { role: m.role, content: contentArray };
+        }
       }
-      navigate(`/chat/${newThreadLocalId}`);
-    } catch (err) { console.error("Failed to create new chat:", err); setError("Failed to create chat."); }
+      return { role: m.role, content: m.content };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!input.trim() && !attachedFile) return;
-    if (isSending) return;
-    if (!user || !user.id) { setError("User not authenticated."); return; }
+  e.preventDefault();
+  if ((!input.trim() && !attachedFile) || isSending || !user || !user.id) {
+    return;
+  }
 
-    const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
-    if (attachedFile && !modelSupportsImages) {
-      setError("Attachments are not supported by the selected model.");
-      return;
-    }
-    setError(null); setIsSending(true);
+  const modelSupportsImages =
+    selectedModel === "meta-llama/llama-4-maverick:free" ||
+    selectedModel === "gemini-2.5-flash-preview-05-20";
+  if (attachedFile && !modelSupportsImages) {
+    setError("Attachments are not supported by the selected model.");
+    return;
+  }
 
-    // Handle editing existing message
-    if (editingMessage && editingMessage.id) {
-      try {
-        // Update the existing message
-        await db.messages.update(editingMessage.id, {
-          content: input,
-          // Note: For simplicity, we're not handling attachment changes during edit
-          // You could extend this to handle attachment updates if needed
-        });
+  setError(null);
+  setIsSending(true);
 
-        // Get the current thread ID for regenerating AI response
-        const threadId = editingMessage.threadId;
-        
-        // Get all messages in the thread to find messages after the edited one
-        const allMessagesInThread = await db.messages
-          .where('threadId')
-          .equals(threadId)
-          .sortBy('createdAt');
-        
-        // Find the index of the edited message
-        const editedMessageIndex = allMessagesInThread.findIndex(m => m.id === editingMessage.id);
-        
-        if (editedMessageIndex !== -1) {
-          // Delete all assistant messages that came after the edited user message
-          const messagesToDelete = allMessagesInThread.slice(editedMessageIndex + 1);
-          for (const msgToDelete of messagesToDelete) {
-            if (msgToDelete.id) {
-              await db.messages.delete(msgToDelete.id);
-            }
-          }
-          
-          // Get the conversation history up to and including the edited message
-          const historyUpToEdit = allMessagesInThread.slice(0, editedMessageIndex);
-          
-          // Add the updated message to the history
-          const updatedMessage = await db.messages.get(editingMessage.id);
-          if (updatedMessage) {
-            historyUpToEdit.push(updatedMessage);
-          }
-          
-          // Build the conversation for AI
-          const modelSupportsImages = selectedModel === "meta-llama/llama-4-maverick:free" || selectedModel === "gemini-2.5-flash-preview-05-20";
-          const historyForAI = buildHistoryForAI(historyUpToEdit, modelSupportsImages);
-          
-          // Create a new assistant message
-          const assistantMessageData: Omit<Message, 'id'> = {
-            threadId: threadId,
-            role: "assistant",
-            content: "",
-            createdAt: new Date(),
-            model: selectedModel,
-            supabase_id: null
-          };
-          const assistantLocalMessageId = await db.messages.add(assistantMessageData as Message);
-          
-          // Clear edit state before making API call
-          setEditingMessage(null);
-          setInput("");
-          setAttachedFile(null);
-          setAttachedPreview(null);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          
-          // Call the AI API
-          try {
-            const response = await fetch("/api/chat", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
-            });
-            
-            if (!response.body) throw new Error("Response has no body");
-            if (!response.ok) {
-              const errData = await response.json();
-              throw new Error(errData.error || "API error");
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullResponse = "";
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value, { stream: true });
-              
-              chunk.split('\n').forEach(line => {
-                if (line.startsWith("0:")) {
-                  try {
-                    fullResponse += JSON.parse(line.substring(2));
-                    if (assistantLocalMessageId) {
-                      db.messages.update(assistantLocalMessageId, { content: fullResponse });
-                    }
-                  } catch (e) {
-                    console.warn("Failed to parse stream line", line, e);
-                  }
-                }
-              });
-            }
-          } catch (apiError: any) {
-            console.error("API error during edit:", apiError);
-            if (assistantLocalMessageId) {
-              await db.messages.update(assistantLocalMessageId, { 
-                content: `Error: ${apiError.message || "Failed to get response"}` 
-              });
-            }
-          }
-        }
-        
-        setIsSending(false);
-        return;
-      } catch (err) {
-        console.error("Failed to update message:", err);
-        setError("Failed to update message.");
-        setIsSending(false);
-        return;
-      }
-    }
-
-    let currentLocalThreadId: number;
-
-    if (!routeThreadId) {
-      try {
-        const title = await generateTitleFromPrompt(input, 50) || "New Chat";
-        const newThreadData: Omit<Thread, 'id'> = { userId: user.id, title, createdAt: new Date(), updatedAt: new Date(), supabase_id: null };
-        currentLocalThreadId = await db.threads.add(newThreadData as Thread);
-        const threadToSync = await db.threads.get(currentLocalThreadId);
-        if (threadToSync) await syncFullThreadToBackend({ threadData: threadToSync, messagesData: [], attachmentsData: [] });
-        navigate(`/chat/${currentLocalThreadId}`);
-      } catch (err) { console.error("Failed to create new thread on submit:", err); setError("Failed to create thread."); setIsSending(false); return; }
-    } else {
-      currentLocalThreadId = parseInt(routeThreadId);
-      if (isNaN(currentLocalThreadId)) { setError("Invalid thread ID."); setIsSending(false); return; }
-      // Potentially update title if first message in an empty "New Chat"
-      const currentThreadData = await db.threads.get(currentLocalThreadId);
-      const messagesInThread = await db.messages.where('threadId').equals(currentLocalThreadId).count();
-      if (messagesInThread === 0 && input.trim() && currentThreadData && (currentThreadData.title === "New Chat" || !currentThreadData.title)) {
-        const newTitle = await generateTitleFromPrompt(input, 50);
-        if (newTitle) {
-          await db.threads.update(currentLocalThreadId, { title: newTitle, updatedAt: new Date() });
-          const updatedThreadForSync = await db.threads.get(currentLocalThreadId);
-          if (updatedThreadForSync) await syncFullThreadToBackend({ threadData: updatedThreadForSync, messagesData: [], attachmentsData: [] });
-        }
-      }
-    }
-
-    let assistantLocalMessageId: number | null = null;
+  // --- Block 1: Handle Message Editing ---
+  // This logic is now self-contained and runs only when editing.
+  if (editingMessage && editingMessage.id) {
     try {
-      let userMessageLocalId: number | undefined;
-      let attachmentsForDb: MessageAttachment[] = [];
-      let attachmentsForSync: FullThreadSyncPayload['attachmentsData'] = [];
-      let uploadedSupabaseUrl: string | null = null;
-      let uploadedFileName: string | null = null;
+      // Get the universal thread ID from the message being edited.
+      const threadId = editingMessage.thread_supabase_id;
 
-      if (attachedFile) {
-        const fileToUpload = attachedFile;
-        try {
-          const { supabaseUrl, fileName, error: uploadError } = await uploadFileToSupabaseStorage(fileToUpload);
+      // Update the existing message content in Dexie.
+      await db.messages.update(editingMessage.id, { content: input });
 
+      // BUG FIX: Query using the correct indexed field 'thread_supabase_id'.
+      const allMessagesInThread = await db.messages
+        .where("thread_supabase_id")
+        .equals(threadId)
+        .sortBy("createdAt");
 
-          if (uploadError) {
-            throw new Error(`Supabase upload failed: ${uploadError}`);
-          }
-          if (!supabaseUrl || !fileName) {
-            throw new Error("Supabase upload returned invalid data.");
-          }
-          uploadedSupabaseUrl = supabaseUrl;
-          uploadedFileName = fileName;
-          attachmentsForDb = [{ file_name: uploadedFileName, file_url: uploadedSupabaseUrl, supabase_id: null }];
-        } catch (uploadErr: any) {
-          console.error("Supabase storage upload failed:", uploadErr);
-          setError(`Failed to upload image: ${uploadErr.message}`);
-          setIsSending(false);
-          return; 
-        }
-      } else {
-        attachmentsForDb = [];
-      }
+      const editedMessageIndex = allMessagesInThread.findIndex(
+        (m) => m.id === editingMessage.id
+      );
 
-      const userMessageData: Omit<Message, 'id'> = {
-        threadId: currentLocalThreadId,
-        role: "user",
-        content: input,
-        attachments: attachmentsForDb,
-        createdAt: new Date(),
-        model: selectedModel,
-        supabase_id: null,
-      };
-      userMessageLocalId = await db.messages.add(userMessageData as Message);
-
-      if (userMessageLocalId && uploadedSupabaseUrl && uploadedFileName && attachmentsForDb.length > 0) {
-        attachmentsForSync = attachmentsForDb.map(att => ({
-          localMessageId: userMessageLocalId!,
-          file_name: att.file_name, 
-          file_url: att.file_url, 
-        }));
-      } else {
-        attachmentsForSync = [];
-      }
-
-      const currentInput = input; setInput("");
-      const currentAttachedFileForPreview = attachedPreview; setAttachedPreview(null); setAttachedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-
-      const assistantMessageData: Omit<Message, 'id'> = {
-        threadId: currentLocalThreadId, role: "assistant", content: "", createdAt: new Date(), model: selectedModel, supabase_id: null
-      };
-      assistantLocalMessageId = await db.messages.add(assistantMessageData as Message);
-
-      const historyForAI = (messages || []).map(m => {
-        if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
-          if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
-            const contentArray = [] as any[];
-            if (m.content.trim()) {
-              contentArray.push({ type: "text", text: m.content });
-            }
-            const url = m.attachments[0].file_url;
-            if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
-              contentArray.push({ type: "image_url", image_url: { url } });
-            } else {
-              contentArray.push({ type: "file_url", file_url: { url } });
-            }
-            return { role: m.role, content: contentArray };
+      if (editedMessageIndex !== -1) {
+        // Delete all assistant messages that came after the edited user message.
+        const messagesToDelete = allMessagesInThread.slice(editedMessageIndex + 1);
+        for (const msgToDelete of messagesToDelete) {
+          if (msgToDelete.id) {
+            await db.messages.delete(msgToDelete.id);
           }
         }
-        return { role: m.role, content: m.content };
-      });
 
-      const apiRequestBody: any = { model: selectedModel, messages: [...historyForAI] };
-      
-      const currentUserMessageContentForAI: any = { role: "user" };
-      if (uploadedSupabaseUrl && modelSupportsImages && attachedFile) {
-        const contentArray = [] as any[];
-        if (currentInput.trim()) {
-          contentArray.push({ type: "text", text: currentInput });
-        }
-        if (attachedFile.type.startsWith('image/')) {
-          contentArray.push({ type: "image_url", image_url: { url: uploadedSupabaseUrl } });
-        } else {
-          contentArray.push({ type: "file_url", file_url: { url: uploadedSupabaseUrl, mime_type: attachedFile.type } });
-        }
-        currentUserMessageContentForAI.content = contentArray;
-      } else {
-        currentUserMessageContentForAI.content = currentInput;
-      }
-      apiRequestBody.messages.push(currentUserMessageContentForAI);
+        // Get history up to and including the *newly updated* message.
+        const historyUpToEdit = allMessagesInThread.slice(0, editedMessageIndex + 1);
+        const historyForAI = buildHistoryForAI(historyUpToEdit, modelSupportsImages);
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json", // <-- ADD THIS HEADER
-        },
-        body: JSON.stringify(apiRequestBody),
-      });
-      if (!response.body) throw new Error("Response has no body");
-      if (!response.ok) {
-        const errData = await response.json();
-        let displayErrorMessage = "API error"; // Default message
-        if (errData) {
-          if (errData.error) {
-            if (typeof errData.error === 'string') {
-              displayErrorMessage = errData.error;
-            } else if (errData.error.message && typeof errData.error.message === 'string') {
-              // If errData.error is an object with a message property
-              displayErrorMessage = errData.error.message;
-            } else {
-              // Otherwise, try to stringify the errData.error object
-              try {
-                displayErrorMessage = JSON.stringify(errData.error);
-              } catch (stringifyError) {
-                displayErrorMessage = "Invalid error object received from API";
-              }
-            }
-          } else if (typeof errData.message === 'string') {
-            // Fallback if the error message is directly in errData.message
-            displayErrorMessage = errData.message;
-          }
-        }
-        throw new Error(displayErrorMessage);
-      }
+        // Create a new placeholder for the assistant's response.
+        const assistantMessageData: Message = {
+          thread_supabase_id: threadId,
+          role: "assistant",
+          content: "",
+          createdAt: new Date(),
+          model: selectedModel,
+        };
+        const assistantLocalMessageId = await db.messages.add(assistantMessageData);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        // Process Vercel AI SDK stream format (assuming 0: prefix for content)
-        chunk.split('\n').forEach(line => {
-          if (line.startsWith("0:")) {
-            try {
-              fullResponse += JSON.parse(line.substring(2));
-              if (assistantLocalMessageId) db.messages.update(assistantLocalMessageId, { content: fullResponse });
-            } catch (e) { console.warn("Failed to parse stream line", line, e); }
-          }
+        // Clear the editing state *before* the API call.
+        setEditingMessage(null);
+        setInput("");
+        setAttachedFile(null);
+        setAttachedPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+
+        // Call the AI API to regenerate the response.
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
         });
-      }
-    } catch (err: any) {
-      console.error("Submit error:", err);
-      setError(err.message || "Failed to get response.");
-      if (assistantLocalMessageId) await db.messages.update(assistantLocalMessageId, { content: `Error: ${err.message}` });
-    } finally {
-      setIsSending(false);
-      // Sync the entire thread state after the operation
-      const finalThreadData = await db.threads.get(currentLocalThreadId);
-      const finalMessagesData = await db.messages.where('threadId').equals(currentLocalThreadId).toArray();
-      let finalAttachmentsDataForSync: FullThreadSyncPayload['attachmentsData'] = [];
-      for (const msg of finalMessagesData) {
-        if (msg.attachments && msg.id) {
-          msg.attachments.forEach(att => {
-            // Ensure att.file_url is the Supabase Storage URL for sync
-            if (att.file_url && !att.file_url.startsWith('data:')) { 
-              finalAttachmentsDataForSync.push({ localMessageId: msg.id!, file_name: att.file_name, file_url: att.file_url });
-            } else if (att.file_url && att.file_url.startsWith('data:')) {
-              // This case means an old message still has a data URL.
-              // It won't be synced correctly unless it was uploaded during this session and updated in finalMessagesData.
-              // The current logic primarily fixes new uploads.
-              console.warn(`Attachment ${att.file_name} for message ${msg.id} has a data URL. It might not be synced correctly if not uploaded to Supabase.`);
+
+        if (!response.body || !response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "API error during regeneration");
+        }
+
+        // Stream the new response into the placeholder message.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          chunk.split("\n").forEach((line) => {
+            if (line.startsWith("0:")) {
+              try {
+                fullResponse += JSON.parse(line.substring(2));
+                db.messages.update(assistantLocalMessageId, { content: fullResponse });
+              } catch (e) {
+                console.warn("Failed to parse stream line", line, e);
+              }
             }
           });
         }
       }
-      if (finalThreadData) {
-        try {
-          await syncFullThreadToBackend({ threadData: finalThreadData, messagesData: finalMessagesData, attachmentsData: finalAttachmentsDataForSync });
-        } catch (syncError) { console.error("Sync failed in finally block:", syncError); }
+    } catch (err: any) {
+      console.error("Failed to update message:", err);
+      setError(err.message || "Failed to update message.");
+    } finally {
+      setIsSending(false);
+      // Always sync the thread after an edit operation completes or fails.
+      if (editingMessage?.thread_supabase_id) {
+        const finalThreadData = await db.threads.get({
+          supabase_id: editingMessage.thread_supabase_id,
+        });
+        const finalMessagesData = await db.messages
+          .where("thread_supabase_id")
+          .equals(editingMessage.thread_supabase_id)
+          .toArray();
+        if (finalThreadData) {
+          await syncFullThreadToBackend({
+            threadData: finalThreadData,
+            messagesData: finalMessagesData,
+            attachmentsData: [],
+          });
+        }
       }
     }
-  };
+    return; // Exit the function after handling the edit.
+  }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    processFile(file);
-  };
+  // --- Block 2: Handle New Message Submission ---
+  // This logic runs only when submitting a new message.
+  let currentSupabaseThreadId = supabaseThreadId;
+  let assistantLocalMessageId: number | null = null;
 
-  const removeAttachedFile = () => {
+  try {
+    // If there's no thread ID in the URL, it's the first message of a new chat.
+    if (!currentSupabaseThreadId) {
+      const newThreadSupabaseId = uuidv4();
+      const title = (await generateTitleFromPrompt(input, 50)) || "New Chat";
+      const newThreadData: Thread = {
+        supabase_id: newThreadSupabaseId,
+        userId: user.id,
+        title: title,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      await db.threads.put(newThreadData);
+      currentSupabaseThreadId = newThreadSupabaseId;
+      navigate(`/chat/${newThreadSupabaseId}`, { replace: true });
+    } else {
+      // If it's the first message in an existing but empty thread, update the title.
+      const messagesInThread = await db.messages
+        .where("thread_supabase_id")
+        .equals(currentSupabaseThreadId)
+        .count();
+      if (messagesInThread === 0) {
+        const title = (await generateTitleFromPrompt(input, 50)) || "New Chat";
+        await db.threads
+          .where({ supabase_id: currentSupabaseThreadId })
+          .modify({ title: title, updatedAt: new Date() });
+      }
+    }
+
+    // File Upload Logic
+    let attachmentsForDb: MessageAttachment[] = [];
+    let uploadedSupabaseUrl: string | null = null;
+    if (attachedFile) {
+      const { supabaseUrl, fileName, error } = await uploadFileToSupabaseStorage(
+        attachedFile
+      );
+      if (error || !supabaseUrl || !fileName) {
+        throw new Error(`Supabase upload failed: ${error}`);
+      }
+      uploadedSupabaseUrl = supabaseUrl;
+      attachmentsForDb = [{ file_name: fileName, file_url: supabaseUrl }];
+    }
+
+    // Create User Message in Dexie
+    const currentInput = input; // Capture input before clearing it.
+    const userMessageData: Message = {
+      thread_supabase_id: currentSupabaseThreadId,
+      role: "user",
+      content: currentInput,
+      attachments: attachmentsForDb,
+      createdAt: new Date(),
+      model: selectedModel,
+    };
+    await db.messages.add(userMessageData);
+
+    // Create Assistant Placeholder Message in Dexie
+    const assistantMessageData: Message = {
+      thread_supabase_id: currentSupabaseThreadId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date(),
+      model: selectedModel,
+    };
+    assistantLocalMessageId = await db.messages.add(assistantMessageData);
+
+    // Clear inputs from UI
+    setInput("");
     setAttachedFile(null);
     setAttachedPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  };
 
+    // Build history for AI, now including the new user message
+    const fullHistory = await db.messages
+      .where("thread_supabase_id")
+      .equals(currentSupabaseThreadId)
+      .sortBy("createdAt");
+    const historyForAI = buildHistoryForAI(fullHistory, modelSupportsImages);
+
+    // Call AI API
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+    });
+
+    if (!response.body || !response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error?.message || errData.error || "API error");
+    }
+
+    // Stream response into the assistant placeholder
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      chunk.split("\n").forEach((line) => {
+        if (line.startsWith("0:")) {
+          try {
+            fullResponse += JSON.parse(line.substring(2));
+            db.messages.update(assistantLocalMessageId!, { content: fullResponse });
+          } catch (e) {
+            console.warn("Failed to parse stream line", line, e);
+          }
+        }
+      });
+    }
+  } catch (err: any) {
+    console.error("Submit error:", err);
+    setError(err.message || "Failed to get response.");
+    // If an error occurs, update the placeholder message to show it.
+    if (assistantLocalMessageId) {
+      await db.messages.update(assistantLocalMessageId, {
+        content: `Error: ${err.message}`,
+      });
+    }
+  } finally {
+    setIsSending(false);
+    // Sync the entire thread state after the operation completes or fails.
+    if (currentSupabaseThreadId) {
+      // BUG FIX: Look up thread using the correct universal ID.
+      const finalThreadData = await db.threads.get({
+        supabase_id: currentSupabaseThreadId,
+      });
+      // BUG FIX: Query messages using the correct universal ID.
+      const finalMessagesData = await db.messages
+        .where("thread_supabase_id")
+        .equals(currentSupabaseThreadId)
+        .toArray();
+
+      if (finalThreadData) {
+        try {
+          await syncFullThreadToBackend({
+            threadData: finalThreadData,
+            messagesData: finalMessagesData,
+            attachmentsData: [], // Populate this if needed
+          });
+        } catch (syncError) {
+          console.error("Sync failed in finally block:", syncError);
+          // Optionally set another error state for sync-specific failures.
+        }
+      }
+    }
+  }
+};
+
+  // --- HELPER FUNCTIONS for message editing, file handling ---
   const handleEditMessage = (msg: Message) => {
     setEditingMessage(msg);
     setInput(msg.content);
-    // Clear any attached files when editing
     setAttachedFile(null);
     setAttachedPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    // Consider scrolling to the input area or the message being edited
+    // messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
@@ -660,70 +643,75 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const buildHistoryForAI = (msgs: Message[], modelSupportsImages: boolean) => {
-    return msgs.map((m) => {
-      if (m.attachments && m.attachments.length > 0 && m.attachments[0].file_url) {
-        if (m.attachments[0].file_url.startsWith('data:') || modelSupportsImages) {
-          const contentArray: any[] = [];
-          if (m.content.trim()) {
-            contentArray.push({ type: 'text', text: m.content });
-          }
-          const url = m.attachments[0].file_url;
-          if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
-            contentArray.push({ type: 'image_url', image_url: { url } });
-          } else {
-            contentArray.push({ type: 'file_url', file_url: { url } });
-          }
-          return { role: m.role, content: contentArray };
-        }
-      }
-      return { role: m.role, content: m.content };
-    });
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    setAttachedPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processFile(file);
+  };
+  // --- END HELPER FUNCTIONS ---
 
   const handleRegenerate = async (msg: Message) => {
     if (!messages || !msg.id || isSending) return;
     const index = messages.findIndex((m) => m.id === msg.id);
-    if (index === -1 || index === 0) return;
+    if (index === -1) return;
+
     const historyBefore = messages.slice(0, index);
+
     const modelToUse = msg.model || selectedModel;
-    const modelSupportsImages = modelToUse === "meta-llama/llama-4-maverick:free" || modelToUse === "gemini-2.5-flash-preview-05-20";
-    const historyForAI = buildHistoryForAI(historyBefore, modelSupportsImages);
+    const currentModelSpec = availableModels.find((m) => m.value === modelToUse);
+    const modelSupportsImagesFlag = currentModelSpec?.supportsImages || false;
+    const historyForAI = buildHistoryForAI(historyBefore, modelSupportsImagesFlag);
 
     setIsSending(true);
-    await db.messages.update(msg.id, { content: '' });
+    // Ensure msg.id is valid before updating
+    if (msg.id) {
+      await db.messages.update(msg.id, { content: "" });
+    }
+
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      // Main try for handleRegenerate API call and stream processing
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: modelToUse, messages: historyForAI }),
       });
-      if (!response.ok || !response.body) throw new Error('API error');
+      if (!response.ok || !response.body) throw new Error("API error");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let full = '';
+      let full = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        chunk.split('\n').forEach((line) => {
-          if (line.startsWith('0:')) {
+        chunk.split("\n").forEach((line) => {
+          if (line.startsWith("0:")) {
             try {
               full += JSON.parse(line.substring(2));
-              db.messages.update(msg.id!, { content: full });
+              if (msg.id) {
+                db.messages.update(msg.id, { content: full });
+              }
             } catch (e) {
-              console.warn('parse stream line failed', line, e);
+              console.warn("parse stream line failed", line, e);
             }
           }
         });
-      }
+      } // Closes while loop for stream reading
+      // Correct placement of the catch and finally for the main try block of handleRegenerate
     } catch (err: any) {
-      console.error('Regenerate error:', err);
-      await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+      console.error("Regenerate error:", err);
+      if (msg.id) {
+        await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+      }
     } finally {
       setIsSending(false);
     }
-  };
+  }; // End of handleRegenerate
 
   // Helper function to process a File object (used by both file input and drag&drop)
   const processFile = (file: File) => {
@@ -731,9 +719,9 @@ export default function ChatPage() {
       setError("Please remove the current file before adding a new one.");
       return;
     }
-    
+
     setAttachedFile(file);
-    if (file.type.startsWith('image/')) {
+    if (file.type.startsWith("image/")) {
       const reader = new FileReader();
       reader.onload = () => setAttachedPreview(reader.result as string);
       reader.readAsDataURL(file);
@@ -757,7 +745,7 @@ export default function ChatPage() {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX;
     const y = e.clientY;
-    
+
     if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
       setIsDragOver(false);
     }
@@ -789,8 +777,13 @@ export default function ChatPage() {
 
   // --- RENDER ---
   if (isLoadingModels || !isUserLoaded) {
-    return <div className="chat-container h-screen w-screen flex items-center justify-center">
-      <div className="glass-effect rounded-2xl p-8 text-white text-lg font-medium">Loading...</div></div>;
+    return (
+      <div className="chat-container h-screen w-screen flex items-center justify-center">
+        <div className="glass-effect rounded-2xl p-8 text-white text-lg font-medium">
+          Loading...
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -801,18 +794,28 @@ export default function ChatPage() {
           <div className="flex items-center space-x-6">
             <h1 className="text-2xl font-bold text-white">Tweak3 Chat</h1>
             {/* Model Selector Dropdown Here */}
-            <select 
-              value={selectedModel} 
-              onChange={e => setSelectedModel(e.target.value)} 
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
               className="bg-gray-800 text-white p-2 rounded"
               disabled={isLoadingModels || availableModels.length === 0}
             >
               {isLoadingModels && <option value="">Loading models...</option>}
-              {!isLoadingModels && availableModels.length === 0 && <option value="">No models available</option>}
-              {availableModels.map(m => <option key={m.value} value={m.value}>{m.displayName}</option>)}
+              {!isLoadingModels && availableModels.length === 0 && (
+                <option value="">No models available</option>
+              )}
+              {availableModels.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.displayName}
+                </option>
+              ))}
             </select>
           </div>
-          {user && <div className="text-white">{user.primaryEmailAddress?.emailAddress}</div>}
+          {user && (
+            <div className="text-white">
+              {user.primaryEmailAddress?.emailAddress}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -823,7 +826,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div 
+        <div
           className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -839,8 +842,6 @@ export default function ChatPage() {
             </div>
           )}
 
-
-          
           <div className="mx-auto max-w-4xl space-y-6">
             {/* Welcome message when no messages */}
             {(!messages || messages.length === 0) && !attachedFile && (
@@ -853,34 +854,76 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-            
+
             {messages?.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`message-bubble max-w-xl p-4 rounded-2xl ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-white'}`}>
-              <div className="flex justify-between items-center">
-                <div className="font-bold capitalize"><small>{m.role === 'assistant' ? (availableModels.find(am => am.value === m.model)?.displayName || m.model): m.role}</small></div>
-                {m.role === 'user' && (
-                  <button type="button" onClick={() => handleEditMessage(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Pencil /></button>
-                )}
-                {m.role === 'assistant' && (
-                  <button type="button" onClick={() => handleRegenerate(m)} className="ml-2 text-xs text-white/70 hover:text-white"><Recycle /></button>
-                )}
-              </div>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{m.content}</p>
-              {m.attachments && m.attachments.map((att, index) => (
-                <div key={index} className="mt-2">
-                {att.file_url.startsWith('data:image') ? (
-                  <img src={att.file_url} alt={att.file_name} className="max-w-xs max-h-xs rounded" />
-                ) : (
-                  <a href={att.file_url} target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline">
-                  {att.file_name}
-                  </a>
-                )}
+              <div
+                key={m.id}
+                className={`flex ${
+                  m.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`message-bubble max-w-xl p-4 rounded-2xl ${
+                    m.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-700 text-white"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="font-bold capitalize">
+                      <small>
+                        {m.role === "assistant"
+                          ? availableModels.find((am) => am.value === m.model)
+                              ?.displayName || m.model
+                          : m.role}
+                      </small>
+                    </div>
+                    {m.role === "user" && (
+                      <button
+                        type="button"
+                        onClick={() => handleEditMessage(m)}
+                        className="ml-2 text-xs text-white/70 hover:text-white"
+                      >
+                        <Pencil />
+                      </button>
+                    )}
+                    {m.role === "assistant" && (
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerate(m)}
+                        className="ml-2 text-xs text-white/70 hover:text-white"
+                      >
+                        <Recycle />
+                      </button>
+                    )}
+                  </div>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
+                  {m.attachments &&
+                    m.attachments.map((att, index) => (
+                      <div key={index} className="mt-2">
+                        {att.file_url.startsWith("data:image") ? (
+                          <img
+                            src={att.file_url}
+                            alt={att.file_name}
+                            className="max-w-xs max-h-xs rounded"
+                          />
+                        ) : (
+                          <a
+                            href={att.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-300 hover:underline"
+                          >
+                            {att.file_name}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  <div className="text-xs opacity-70 mt-1">
+                    {new Date(m.createdAt).toLocaleTimeString()}
+                  </div>
                 </div>
-              ))}
-              <div className="text-xs opacity-70 mt-1">{new Date(m.createdAt).toLocaleTimeString()}</div>
               </div>
-            </div>
             ))}
             <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
           </div>
@@ -891,18 +934,38 @@ export default function ChatPage() {
             <div className="chat-input-unified rounded-t-2xl p-4">
               {editingMessage && (
                 <div className="mb-2 p-2 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-between">
-                  <span className="text-blue-300 text-sm">Editing message...</span>
-                  <button type="button" onClick={handleCancelEdit} className="text-blue-400 hover:text-blue-300 text-sm">Cancel</button>
+                  <span className="text-blue-300 text-sm">
+                    Editing message...
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-blue-400 hover:text-blue-300 text-sm"
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
               {attachedFile && (
                 <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
                   {attachedPreview ? (
-                    <img src={attachedPreview} alt="Preview" className="max-h-16 max-w-xs rounded" />
+                    <img
+                      src={attachedPreview}
+                      alt="Preview"
+                      className="max-h-16 max-w-xs rounded"
+                    />
                   ) : (
-                    <span className="text-white text-sm">{attachedFile.name}</span>
+                    <span className="text-white text-sm">
+                      {attachedFile.name}
+                    </span>
                   )}
-                  <button type="button" onClick={removeAttachedFile} className="text-red-400 hover:text-red-300"><XSquare /></button>
+                  <button
+                    type="button"
+                    onClick={removeAttachedFile}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    <XSquare />
+                  </button>
                 </div>
               )}
               <div className="flex items-end space-x-3">
@@ -913,7 +976,7 @@ export default function ChatPage() {
                   onChange={(e) => setInput(e.target.value)}
                   disabled={isSending}
                   rows={1}
-                  style={{ minHeight: '3rem', maxHeight: '10rem' }} // Adjusted minHeight
+                  style={{ minHeight: "3rem", maxHeight: "10rem" }} // Adjusted minHeight
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -921,12 +984,33 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isSending || editingMessage !== null} className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none disabled:opacity-50">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  style={{ display: "none" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending || editingMessage !== null}
+                  className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none disabled:opacity-50"
+                >
                   <Paperclip />
                 </button>
-                <button type="submit" disabled={isSending || (!input.trim() && !attachedFile)} className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50">
-                  {isSending ? <Loader2 /> : (editingMessage ? <span>Update</span> : <SendHorizonal />)} {/* Show "Update" when editing */}
+                <button
+                  type="submit"
+                  disabled={isSending || (!input.trim() && !attachedFile)}
+                  className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50"
+                >
+                  {isSending ? (
+                    <Loader2 />
+                  ) : editingMessage ? (
+                    <span>Update</span>
+                  ) : (
+                    <SendHorizonal />
+                  )}{" "}
+                  {/* Show "Update" when editing */}
                 </button>
               </div>
             </div>

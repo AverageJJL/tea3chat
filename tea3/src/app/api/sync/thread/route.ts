@@ -14,6 +14,13 @@ export async function POST(request: Request) {
 
   try {
     const threadData = await request.json();
+
+    // Ensure supabase_id (our shared_id) is present in the request
+    if (!threadData.supabase_id) {
+      console.error('Error: supabase_id (acting as shared_id) missing in threadData for sync.');
+      return NextResponse.json({ error: 'supabase_id (acting as shared_id) is required in the request body.' }, { status: 400 });
+    }
+
     const supabaseToken = await getToken({ template: 'supabase' });
 
     if (!supabaseToken) {
@@ -33,32 +40,47 @@ export async function POST(request: Request) {
       },
     });
 
-    const dataToInsert = {
-      // Assuming Supabase 'id' is auto-generated (e.g., UUID by default).
-      // Store the original Dexie ID if you need a reference to it.
-      dexie_id: threadData.id,
-      clerk_user_id: userId, // Essential for RLS
+    // Prepare data for Supabase, using threadData.supabase_id as the shared_id
+    // Assumes your Supabase 'threads' table has a 'shared_id' column (UUID, unique)
+    // and 'id' is the auto-generated primary key.
+    const dataToUpsert = {
+      shared_id: threadData.supabase_id, // This is the client-generated UUID
+      dexie_id: threadData.id,           // Original Dexie ID (local to the client that initiated sync)
+      clerk_user_id: userId,             // Authenticated user
       title: threadData.title,
-      created_at: threadData.createdAt, // Ensure column names match your Supabase table
-      updated_at: threadData.updatedAt
+      created_at: threadData.createdAt,  // Client-provided creation timestamp
+      updated_at: threadData.updatedAt   // Client-provided update timestamp
     };
 
-    // Replace 'threads' with your actual table name in Supabase
+    // Upsert into 'threads' table.
+    // This will insert a new row if no row with the given 'shared_id' exists for the user,
+    // or update the existing row if it does.
+    // Assumes 'shared_id' has a unique constraint.
     const { data, error } = await supabase
       .from('threads')
-      .insert([dataToInsert])
-      .select(); // Optionally select the inserted data to return or log
+      .upsert(dataToUpsert, {
+        onConflict: 'shared_id', // Specify the column(s) for conflict detection
+        // ignoreDuplicates: false, // Default is true. Upsert updates on conflict.
+      })
+      .select() // Select the inserted or updated row
+      .single(); // Expecting a single row back
 
     if (error) {
-      console.error('Supabase insert error:', error);
-      // Provide more specific error if RLS is the issue
+      console.error('Supabase upsert error:', error);
       if (error.message.includes("violates row-level security policy")) {
         return NextResponse.json({ error: "Supabase RLS policy violation. Check table permissions and clerk_user_id handling." }, { status: 403 });
+      }
+      if (error.message.includes("duplicate key value violates unique constraint")) {
+         return NextResponse.json({ error: `Unique constraint violation: ${error.message}` }, { status: 409 }); // 409 Conflict
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data }, { status: 201 });
+    // The 'data' returned from Supabase will contain the full thread record,
+    // including its Supabase 'id' (PK) and the 'shared_id'.
+    // The client should use data.shared_id to ensure its local Dexie thread.supabase_id is correct.
+    return NextResponse.json({ success: true, data }, { status: 200 }); // 200 OK (usually for update, can be 201 for create)
+
   } catch (error: any) {
     console.error('Error syncing thread to Supabase:', error);
     return NextResponse.json({ error: error.message || 'Failed to sync thread' }, { status: 500 });

@@ -52,19 +52,21 @@ export async function POST(request: Request) {
     // 1. Upsert Thread
     // IMPORTANT: Ensure you have a unique constraint on (dexie_id, clerk_user_id) in your 'threads' table for onConflict to work.
     const { data: thread, error: threadError } = await supabase
-      .from('threads')
-      .upsert({
-        dexie_id: threadData.id, // Local Dexie ID
-        clerk_user_id: userId,
-        title: threadData.title,
-        created_at: threadData.createdAt, // This will be set on insert and updated on conflict
-        updated_at: threadData.updatedAt,  // This will be set on insert and updated on conflict
-      }, {
-        onConflict: 'dexie_id, clerk_user_id', // Specify conflict target
-        // Supabase client defaults to updating columns on conflict, which is suitable here.
-      })
-      .select() // Select all columns of the inserted/updated row
-      .single(); // Expecting a single thread to be upserted and returned
+      .from("threads")
+      .upsert(
+        {
+          shared_id: threadData.supabase_id, // The universal UUID from the client
+          clerk_user_id: userId,
+          title: threadData.title,
+          created_at: threadData.createdAt,
+          updated_at: threadData.updatedAt,
+        },
+        {
+          onConflict: "shared_id", // CONFLICT ON THE UNIVERSAL ID
+        }
+      )
+      .select("id, shared_id") // Select the internal ID and the shared_id
+      .single();
 
     if (threadError) {
       console.error('Supabase thread upsert error:', threadError);

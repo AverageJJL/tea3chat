@@ -20,7 +20,8 @@ export interface MessageAttachment {
 export interface Message {
   id?: number; 
   supabase_id?: string | null; 
-  threadId: number; 
+  // CRITICAL: We link messages to threads on the client using the universal ID.
+  thread_supabase_id: string;
   role: "user" | "assistant";
   content: string;
   attachments?: MessageAttachment[]; 
@@ -35,11 +36,17 @@ export class AppDB extends Dexie {
   constructor() {
     super("AppDB");
     // Increment version number when schema changes
+ 
     this.version(2).stores({
       threads: "++id, supabase_id, userId, title, createdAt, updatedAt", // Added supabase_id, title
       messages: "++id, supabase_id, threadId, role, content, createdAt, model", // Added supabase_id and other fields
       // No separate attachments table in Dexie, they are part of messages.
       // Ensure all indexed fields are listed.
+    });
+    this.version(3).stores({
+      
+      threads: "++id, &supabase_id, userId, title, createdAt, updatedAt",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
     });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:
