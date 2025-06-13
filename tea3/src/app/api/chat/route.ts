@@ -36,6 +36,11 @@ export async function POST(req: Request) {
   try {
     const { messages, model } = await req.json();
 
+    console.log(
+      "BACKEND: Received from frontend:",
+      JSON.stringify({ model, messages }, null, 2)
+    );
+
     // Model is now required
     if (!model) {
       return new Response(JSON.stringify({ error: "Model selection is required" }), { 
@@ -83,6 +88,18 @@ export async function POST(req: Request) {
     // expected by the frontend.
 
     if (containsImage) {
+      const payload = {
+        model,
+        stream: false,
+        messages,
+      };
+
+      // --- ADD THIS LOG ---
+      console.log(
+        "BACKEND: Sending to OpenRouter:",
+        JSON.stringify(payload, null, 2)
+      );
+
       // Direct call to OpenRouter
       const openrouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -90,14 +107,10 @@ export async function POST(req: Request) {
           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
           // Optional identifying headers (safe defaults)
-          "HTTP-Referer": "tea3.local",
-          "X-Title": "Tea3 Chat",
+          // "HTTP-Referer": "tea3.local",
+          // "X-Title": "Tea3 Chat",
         },
-        body: JSON.stringify({
-          model,
-          stream: false,
-          messages,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!openrouterResponse.ok) {
@@ -136,16 +149,16 @@ export async function POST(req: Request) {
     });
 
     return result.toDataStreamResponse();
-  } catch (error) {
+  } catch (error: any) { // Added :any for easier property access, consider more specific type if known
     console.error("Chat API error:", error);
     console.error("Error details:", {
       message: error?.message,
       stack: error?.stack,
       name: error?.name,
-      cause: error?.cause
+      cause: error?.cause 
     });
     
-    // Handle specific error types
+    // Handle specific error types first
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         return new Response(JSON.stringify({ error: "API configuration error. Please check your API keys." }), { 
@@ -161,7 +174,17 @@ export async function POST(req: Request) {
       }
     }
 
-    return new Response(JSON.stringify({ error: "An unexpected error occurred. Please try again." }), { 
+    // Generic error response, attempting to use the actual error message
+    let responseErrorMessage = "An unexpected error occurred. Please try again.";
+    if (error instanceof Error && error.message) {
+      responseErrorMessage = error.message;
+    } else if (typeof error === 'string') {
+      responseErrorMessage = error;
+    }
+    // For other types of 'error' (e.g., an object that is not an Error instance), 
+    // it will use the default "An unexpected error occurred..." message.
+
+    return new Response(JSON.stringify({ error: responseErrorMessage }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
