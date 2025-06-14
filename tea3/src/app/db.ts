@@ -7,6 +7,7 @@ export interface Thread {
   title: string;
   createdAt: Date;
   updatedAt: Date;
+  forked_from_id?: string | null;
 }
 
 export interface MessageAttachment { 
@@ -46,6 +47,10 @@ export class AppDB extends Dexie {
     this.version(3).stores({
       
       threads: "++id, &supabase_id, userId, title, createdAt, updatedAt",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    });
+    this.version(4).stores({
+      threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id", // <-- ADD forked_from_id
       messages: "++id, supabase_id, thread_supabase_id, createdAt",
     });
     // If you had a version 1 without these fields, you might need an upgrade function
