@@ -47,7 +47,7 @@ interface SupabaseAttachment {
 
 interface SupabaseMessage {
   id: string;
-  threadId: string; // this may be the shared_id which is the universal ID
+  shared_id: string; // this may be the shared_id which is the universal ID
   clerk_user_id: string;
   role: "user" | "assistant";
   content: string;
@@ -518,7 +518,7 @@ export default function ChatPage() {
         messagesData: [],
         attachmentsData: [],
       });
-      
+
       currentSupabaseThreadId = newThreadSupabaseId;
       navigate(`/chat/${newThreadSupabaseId}`, { replace: true });
     } else {
