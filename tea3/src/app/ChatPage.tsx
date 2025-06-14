@@ -865,52 +865,7 @@ export default function ChatPage() {
       <div className="header-glass p-6 flex justify-between items-center relative z-10 shrink-0">
         <div className="flex items-center space-x-6">
           <h1 className="text-2xl font-bold text-white">Tweak3 Chat</h1>
-          {/* Model Selector Dropdown Here */}
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-gray-800 text-white p-2 rounded"
-            disabled={isLoadingModels || availableModels.length === 0}
-          >
-            {isLoadingModels && <option value="">Loading models...</option>}
-            {!isLoadingModels && availableModels.length === 0 && (
-              <option value="">No models available</option>
-            )}
-            {availableModels.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.displayName}
-              </option>
-            ))}
-          </select>
-          {/* Web Search Toggle */}
-          {currentModelSupportsWebSearch() && (
-            <div className="flex items-center space-x-2">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useWebSearch}
-                  onChange={(e) => setUseWebSearch(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
-                />
-                <span className="text-white text-sm font-medium">Web Search</span>
-              </label>
-              <div className="group relative">
-                <svg 
-                  className="w-4 h-4 text-gray-400 hover:text-white cursor-help" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M9,9h0a3,3,0,0,1,5.12,2.12h0A3,3,0,0,1,13,14.26V16"/>
-                  <circle cx="12" cy="20" r="1"/>
-                </svg>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  Enable real-time web search for current information
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Removed Model Selector and Web Search Toggle - moved to chatbar */}
         </div>
         {user && (
           <div className="text-white">
@@ -1138,6 +1093,68 @@ export default function ChatPage() {
         <div className="pt-8 pb-6">
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
             <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-4 shadow-2xl">
+              {/* Model Controls Row */}
+              <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {/* Model Selector */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-white/70 text-sm font-medium">Model:</span>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
+                      disabled={isLoadingModels || availableModels.length === 0}
+                    >
+                      {isLoadingModels && <option value="" className="bg-gray-800 text-white">Loading models...</option>}
+                      {!isLoadingModels && availableModels.length === 0 && (
+                        <option value="" className="bg-gray-800 text-white">No models available</option>
+                      )}
+                      {availableModels.map((m) => (
+                        <option key={m.value} value={m.value} className="bg-gray-800 text-white">
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Web Search Toggle */}
+                  {currentModelSupportsWebSearch() && (
+                    <div className="flex items-center space-x-3">
+                      <div className="w-px h-6 bg-white/20"></div>
+                      <label className="flex items-center space-x-2 cursor-pointer glass-button-sidebar px-3 py-2 rounded-lg hover:shadow-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={useWebSearch}
+                          onChange={(e) => setUseWebSearch(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-transparent border-2 border-white/40 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                        <span className="text-white text-sm font-medium">Web Search</span>
+                      </label>
+                      <div className="group relative">
+                        <button
+                          type="button"
+                          className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
+                        >
+                          <svg 
+                            className="w-3 h-3 text-gray-400 hover:text-white cursor-help" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M9,9h0a3,3,0,0,1,5.12,2.12h0A3,3,0,0,1,13,14.26V16"/>
+                            <circle cx="12" cy="20" r="1"/>
+                          </svg>
+                        </button>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          Enable real-time web search for current information
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {editingMessage && (
                 <div className="mb-3 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-between">
                   <div className="flex items-center space-x-2">
