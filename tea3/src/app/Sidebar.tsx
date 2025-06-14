@@ -29,8 +29,29 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const handleDeleteThread = async (supabaseIdToDelete: string) => {
     const confirmDelete = confirm('Delete this chat?');
     if (!confirmDelete) return;
-    await db.messages.where('thread_supabase_id').equals(supabaseIdToDelete).delete();
-    await db.threads.delete(supabaseIdToDelete);
+
+    // Remove messages for the thread locally
+    await db.messages
+      .where('thread_supabase_id')
+      .equals(supabaseIdToDelete)
+      .delete();
+
+    // Remove thread locally using the supabase_id index
+    await db.threads
+      .where('supabase_id')
+      .equals(supabaseIdToDelete)
+      .delete();
+
+    // Remove from Supabase
+    try {
+      await fetch(`/api/sync/thread?supabase_id=${supabaseIdToDelete}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete thread on Supabase:', err);
+    }
+
+    // Navigate away if the deleted thread was open
     if (supabaseThreadId === supabaseIdToDelete) {
       navigate('/chat');
     }

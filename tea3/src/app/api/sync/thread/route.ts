@@ -86,3 +86,65 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message || 'Failed to sync thread' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  const { userId, getToken } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const supabaseId = searchParams.get('supabase_id');
+
+  if (!supabaseId) {
+    return NextResponse.json({ error: 'supabase_id query param is required' }, { status: 400 });
+  }
+
+  try {
+    const supabaseToken = await getToken({ template: 'supabase' });
+    if (!supabaseToken) {
+      return NextResponse.json({ error: 'Could not retrieve Supabase token.' }, { status: 500 });
+    }
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: 'Supabase environment variables are missing.' }, { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${supabaseToken}` } },
+    });
+
+    const { data: thread, error: fetchError } = await supabase
+      .from('threads')
+      .select('id')
+      .eq('shared_id', supabaseId)
+      .eq('clerk_user_id', userId)
+      .single();
+
+    if (fetchError || !thread) {
+      const msg = fetchError?.message || 'Thread not found';
+      return NextResponse.json({ error: msg }, { status: 404 });
+    }
+
+    const { data: messageIdsData, error: msgFetchError } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('threadId', thread.id);
+
+    if (msgFetchError) {
+      return NextResponse.json({ error: msgFetchError.message }, { status: 500 });
+    }
+
+    const messageIds = (messageIdsData || []).map((m: any) => m.id);
+    if (messageIds.length > 0) {
+      await supabase.from('attachments').delete().in('messageId', messageIds);
+    }
+
+    await supabase.from('messages').delete().eq('threadId', thread.id);
+    await supabase.from('threads').delete().eq('id', thread.id);
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting thread from Supabase:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete thread' }, { status: 500 });
+  }
+}
