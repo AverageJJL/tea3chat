@@ -215,6 +215,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoadingModels, setIsLoadingModels] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -230,6 +231,27 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-clear error after 3 seconds
+  useEffect(() => {
+    if (error) {
+      // reset fade state immediately when a new error appears
+      setIsErrorFading(false);
+
+      // first trigger fade after 2.5s
+      const fadeTimer = setTimeout(() => {
+        setIsErrorFading(true);
+      }, 2500);
+
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 3000);
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(timer);
+      };
+    }
+  }, [error]);
 
   // Helper function to check if current model supports web search
   const currentModelSupportsWebSearch = () => {
@@ -876,7 +898,9 @@ export default function ChatPage() {
 
       {error && (
         <div className="mx-6 mt-4 relative z-10">
-          <div className="bg-red-500/20 border border-red-500/30 backdrop-filter backdrop-blur-md text-red-100 rounded-xl p-4">
+          <div
+            className={`bg-red-500/20 border border-red-500/30 backdrop-filter backdrop-blur-md text-red-100 rounded-xl p-4 transition-opacity duration-500 ${isErrorFading ? 'opacity-0' : 'opacity-100'}`}
+          >
             Error: {error}
           </div>
         </div>
@@ -891,15 +915,6 @@ export default function ChatPage() {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Drag overlay */}
-        {isDragOver && (
-          <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-50 drag-overlay">
-            <div className="text-white text-2xl font-semibold bg-blue-600/80 px-6 py-3 rounded-lg backdrop-blur">
-              Drop file here to attach
-            </div>
-          </div>
-        )}
-
         <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
           {/* Welcome message when no messages */}
           {(!messages || messages.length === 0) && !attachedFile && (
@@ -948,29 +963,177 @@ export default function ChatPage() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({ inline, className, children }: { inline?: boolean; className?: string; children: React.ReactNode }) {
-                          const match = /language-(\w+)/.exec(className || "");
-                          return !inline && match ? (
-                            <div className="my-4">
-                              <SyntaxHighlighter
-                                style={vscDarkPlus as any}
-                                language={match[1]}
-                                PreTag="div"
-                                customStyle={{
-                                  borderRadius: '8px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5',
-                                }}
+                                              code({ inline, className, children }: { inline?: boolean; className?: string; children: React.ReactNode }) {
+                        const match = /language-(\w+)/.exec(className || "");
+                        
+                        const getFileExtension = (language: string): string => {
+                          const extensionMap: { [key: string]: string } = {
+                            javascript: '.js', js: '.js', jsx: '.jsx',
+                            typescript: '.ts', ts: '.ts', tsx: '.tsx',
+                            python: '.py', py: '.py',
+                            java: '.java',
+                            cpp: '.cpp', 'c++': '.cpp', cxx: '.cpp',
+                            c: '.c',
+                            csharp: '.cs', cs: '.cs',
+                            html: '.html', htm: '.html',
+                            css: '.css',
+                            scss: '.scss', sass: '.sass',
+                            json: '.json',
+                            xml: '.xml',
+                            yaml: '.yml', yml: '.yml',
+                            shell: '.sh', bash: '.sh', sh: '.sh',
+                            sql: '.sql',
+                            php: '.php',
+                            ruby: '.rb', rb: '.rb',
+                            go: '.go',
+                            rust: '.rs', rs: '.rs',
+                            swift: '.swift',
+                            kotlin: '.kt',
+                            r: '.r',
+                            matlab: '.m',
+                            perl: '.pl',
+                            lua: '.lua',
+                            dart: '.dart',
+                            scala: '.scala',
+                            clojure: '.clj',
+                            haskell: '.hs',
+                            elm: '.elm',
+                            dockerfile: '.dockerfile',
+                            makefile: '.makefile',
+                            ini: '.ini',
+                            toml: '.toml',
+                            conf: '.conf',
+                            txt: '.txt',
+                            md: '.md', markdown: '.md',
+                          };
+                          return extensionMap[language.toLowerCase()] || '.txt';
+                        };
+
+                        const getLanguageDisplayName = (language: string): string => {
+                          const displayNames: { [key: string]: string } = {
+                            javascript: 'JavaScript', js: 'JavaScript', jsx: 'JavaScript (JSX)',
+                            typescript: 'TypeScript', ts: 'TypeScript', tsx: 'TypeScript (TSX)',
+                            python: 'Python', py: 'Python',
+                            java: 'Java',
+                            cpp: 'C++', 'c++': 'C++', cxx: 'C++',
+                            c: 'C',
+                            csharp: 'C#', cs: 'C#',
+                            html: 'HTML', htm: 'HTML',
+                            css: 'CSS',
+                            scss: 'SCSS', sass: 'Sass',
+                            json: 'JSON',
+                            xml: 'XML',
+                            yaml: 'YAML', yml: 'YAML',
+                            shell: 'Shell', bash: 'Bash', sh: 'Shell',
+                            sql: 'SQL',
+                            php: 'PHP',
+                            ruby: 'Ruby', rb: 'Ruby',
+                            go: 'Go',
+                            rust: 'Rust', rs: 'Rust',
+                            swift: 'Swift',
+                            kotlin: 'Kotlin',
+                            r: 'R',
+                            matlab: 'MATLAB',
+                            perl: 'Perl',
+                            lua: 'Lua',
+                            dart: 'Dart',
+                            scala: 'Scala',
+                            clojure: 'Clojure',
+                            haskell: 'Haskell',
+                            elm: 'Elm',
+                            dockerfile: 'Dockerfile',
+                            makefile: 'Makefile',
+                            ini: 'INI',
+                            toml: 'TOML',
+                            conf: 'Config',
+                            txt: 'Text',
+                            md: 'Markdown', markdown: 'Markdown',
+                          };
+                          return displayNames[language.toLowerCase()] || language.charAt(0).toUpperCase() + language.slice(1);
+                        };
+
+                        const copyToClipboard = async (text: string) => {
+                          try {
+                            await navigator.clipboard.writeText(text);
+                            // You could add a toast notification here if desired
+                          } catch (err) {
+                            console.error('Failed to copy to clipboard:', err);
+                          }
+                        };
+
+                        const downloadCode = (code: string, language: string) => {
+                          const extension = getFileExtension(language);
+                          const blob = new Blob([code], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `code${extension}`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        };
+                        
+                        return !inline && match ? (
+                          <div className="my-4 relative group">
+                            {/* Language label with download functionality */}
+                            <div className="absolute top-2 left-3 z-10">
+                              <button
+                                onClick={() => downloadCode(String(children).replace(/\n$/, ""), match[1])}
+                                className="glass-button-sidebar px-2 py-1 text-xs font-medium text-white/80 hover:text-white rounded-md transition-colors cursor-pointer flex items-center space-x-1 group/download"
+                                title={`Download ${getLanguageDisplayName(match[1])} code`}
                               >
-                                {String(children).replace(/\n$/, "")}
-                              </SyntaxHighlighter>
+                                <span>{getLanguageDisplayName(match[1])}</span>
+                                <svg 
+                                  width="10" 
+                                  height="10" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  strokeWidth="2" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                  className="opacity-0 group-hover/download:opacity-60 transition-opacity"
+                                >
+                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                  <polyline points="7,10 12,15 17,10"/>
+                                  <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                              </button>
                             </div>
-                          ) : (
-                            <code className={`${className || ""} bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}>
-                              {children}
-                            </code>
-                          );
-                        },
+                            {/* Copy button */}
+                            <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                              <button
+                                onClick={() => copyToClipboard(String(children).replace(/\n$/, ""))}
+                                className="glass-button-sidebar p-1.5 text-white/70 hover:text-white rounded-md transition-colors"
+                                title="Copy code"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                              </button>
+                            </div>
+                            <SyntaxHighlighter
+                              style={vscDarkPlus as any}
+                              language={match[1]}
+                              PreTag="div"
+                              customStyle={{
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                lineHeight: '1.5',
+                                paddingTop: '2.5rem', // Add top padding to make room for the language label
+                              }}
+                            >
+                              {String(children).replace(/\n$/, "")}
+                            </SyntaxHighlighter>
+                          </div>
+                        ) : (
+                          <code className={`${className || ""} bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}>
+                            {children}
+                          </code>
+                        );
+                      },
                         p: ({ children }) => (
                           <p className="mb-4 last:mb-0 text-white/90 leading-relaxed">{children}</p>
                         ),

@@ -70,9 +70,9 @@ const MODEL_PROVIDERS = {
     displayName: "Llama 3 8B (Groq)",
     supportsImages: false,
   },
-  "qwen/qwen3-235b-a22b:free": {
+  "deepseek/deepseek-chat-v3-0324": {
     provider: openrouter,
-    displayName: "Qwen 3 235B (OpenRouter)",
+    displayName: "Deepseek V3 0324 (OpenRouter)",
     supportsImages: false,
   },
 
