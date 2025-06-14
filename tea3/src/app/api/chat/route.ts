@@ -70,9 +70,9 @@ const MODEL_PROVIDERS = {
     displayName: "Llama 3 8B (Groq)",
     supportsImages: false,
   },
-  "qwen/qwen3-235b-a22b:free": {
+  "deepseek/deepseek-chat-v3-0324": {
     provider: openrouter,
-    displayName: "Qwen 3 235B (OpenRouter)",
+    displayName: "Deepseek V3 0324 (OpenRouter)",
     supportsImages: false,
   },
 
@@ -85,11 +85,11 @@ const MODEL_PROVIDERS = {
 
 export async function POST(req: Request) {
   try {
-    const { messages, model } = await req.json();
+    const { messages, model, useWebSearch } = await req.json();
 
     console.log(
       "BACKEND: Received from frontend:",
-      JSON.stringify({ model, messages }, null, 2)
+      JSON.stringify({ model, messages, useWebSearch }, null, 2)
     );
 
     // Model is now required
@@ -235,10 +235,19 @@ export async function POST(req: Request) {
       }));
 
       try {
-        const stream = await geminiClient.models.generateContentStream({
+        const generateConfig: any = {
           model,
           contents: geminiMessages,
-        });
+        };
+
+        // Add search grounding if enabled
+        if (useWebSearch) {
+          generateConfig.config = {
+            tools: [{ googleSearch: {} }],
+          };
+        }
+
+        const stream = await geminiClient.models.generateContentStream(generateConfig);
 
         const encoder = new TextEncoder();
         const respStream = new ReadableStream({

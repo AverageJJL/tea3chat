@@ -31,6 +31,24 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+.sidebar-glass {
+  background: rgba(31, 41, 55, 0.8);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-button-sidebar {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.3s ease;
+}
+
+.glass-button-sidebar:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
 .message-glass {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(8px);
@@ -80,6 +98,25 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+/* Thin scrollbar for sidebar */
+.custom-scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
 /* Button hover effects */
 .glass-button {
   background: rgba(255, 255, 255, 0.1);
@@ -92,6 +129,26 @@
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
+}
+
+/* Glass select styling for chat controls */
+.glass-button-sidebar select {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+}
+
+.glass-button-sidebar select option {
+  background: rgba(31, 41, 55, 0.95);
+  color: white;
+  padding: 8px 12px;
+}
+
+.glass-button-sidebar:focus-within {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 /* Input focus effects */
