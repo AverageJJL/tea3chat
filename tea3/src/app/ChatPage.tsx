@@ -8,6 +8,10 @@ import { db, Thread, Message, MessageAttachment } from "./db"; // Ensure Message
 import { uploadFileToSupabaseStorage } from "./supabaseStorage";
 import Sidebar from "./Sidebar";
 import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
 // Placeholder for icons if lucide-react is not used or to avoid import errors
@@ -219,8 +223,11 @@ export default function ChatPage() {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   // Add edit message state
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  // Add scroll to bottom button state
+  const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   // --- MODEL FETCHING ---
   useEffect(() => {
@@ -268,10 +275,47 @@ export default function ChatPage() {
     }
   }, [user, isUserLoaded]);
 
-  // Scroll to bottom
+  // Smart autoscroll - only scroll if user is within 200px of bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || !messagesEndRef.current) return;
+    
+    // Check if user is within 200px of the bottom
+    const scrollTop = scrollContainer.scrollTop;
+    const scrollHeight = scrollContainer.scrollHeight;
+    const clientHeight = scrollContainer.clientHeight;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    
+    // Only autoscroll if user is within 200px of the bottom
+    if (distanceFromBottom <= 200) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  // Handle scroll events to control visibility of the "scroll to bottom" button
+  const handleScroll = React.useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isScrollable = scrollHeight > clientHeight;
+
+    // Show button when the user is more than 200px away from the bottom
+    setShowScrollButton(distanceFromBottom > 200 && isScrollable);
+  }, []);
+
+  // Re-evaluate button visibility whenever messages change (e.g., new message appended)
+  useEffect(() => {
+    // Run in next tick to ensure DOM has rendered any new content
+    const id = setTimeout(handleScroll, 50);
+    return () => clearTimeout(id);
+  }, [messages, handleScroll]);
+
+  // Function to scroll to bottom smoothly
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Prevent default drag behavior on the entire window
   useEffect(() => {
@@ -313,15 +357,17 @@ export default function ChatPage() {
       };
       await db.threads.put(newThreadData);
 
-      await syncFullThreadToBackend({
+      // Immediately navigate to the new chat for instant UX feedback
+      navigate(`/chat/${newThreadSupabaseId}`);
+
+      // Fire-and-forget sync; don't block UI while network call completes
+      syncFullThreadToBackend({
         threadData: newThreadData,
         messagesData: [],
         attachmentsData: [],
-      });
-
-      
-      
-      navigate(`/chat/${newThreadSupabaseId}`);
+      }).catch((err) =>
+        console.error("Failed to sync new thread to backend:", err)
+      );
     } catch (err) {
       console.error("Failed to create new chat:", err);
       setError("Failed to create chat.");
@@ -860,6 +906,8 @@ export default function ChatPage() {
         )}
 
         <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
           className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -875,15 +923,15 @@ export default function ChatPage() {
             </div>
           )}
 
-          <div className="mx-auto max-w-4xl space-y-6">
+          <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
             {/* Welcome message when no messages */}
             {(!messages || messages.length === 0) && !attachedFile && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="text-white/60 text-lg mb-4">
+              <div className="flex flex-col items-center justify-center py-32 text-center">
+                <div className="text-white text-2xl font-semibold mb-3">
                   Welcome to Tweak3 Chat
                 </div>
-                <div className="text-white/40 text-sm">
-                  Start a conversation
+                <div className="text-white/60 text-lg max-w-md">
+                  Start a conversation with AI. Ask questions, get help with code, or just chat!
                 </div>
               </div>
             )}
@@ -891,71 +939,157 @@ export default function ChatPage() {
             {messages?.map((m) => (
               <div
                 key={m.id}
-                className={`flex ${
+                className={`group flex ${
                   m.role === "user" ? "justify-end" : "justify-start"
-                }`}
+                } mb-8`}
               >
-                <div
-                  className={`message-bubble max-w-xl p-4 rounded-2xl ${
-                    m.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-700 text-white"
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="font-bold capitalize">
-                      <small>
-                        {m.role === "assistant"
-                          ? availableModels.find((am) => am.value === m.model)
-                              ?.displayName || m.model
-                          : m.role}
-                      </small>
-                    </div>
-                    {m.role === "user" && (
-                      <button
-                        type="button"
-                        onClick={() => handleEditMessage(m)}
-                        className="ml-2 text-xs text-white/70 hover:text-white"
-                      >
-                        <Pencil />
-                      </button>
-                    )}
-                    {m.role === "assistant" && (
+                {m.role === "assistant" ? (
+                  // Assistant message - no bubble, clean layout
+                  <div className="max-w-4xl w-full">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
+                          <span className="text-white text-sm font-semibold">AI</span>
+                        </div>
+                        <div className="text-white/80 text-sm font-medium">
+                          {availableModels.find((am) => am.value === m.model)?.displayName || m.model}
+                        </div>
+                        <div className="text-white/40 text-xs">
+                          {new Date(m.createdAt).toLocaleTimeString()}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleRegenerate(m)}
-                        className="ml-2 text-xs text-white/70 hover:text-white"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
+                        title="Regenerate response"
                       >
                         <Recycle />
                       </button>
-                    )}
+                    </div>
+                    <div className="prose prose-invert prose-lg max-w-none text-white/90 leading-relaxed">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code({ inline, className, children }: { inline?: boolean; className?: string; children: React.ReactNode }) {
+                            const match = /language-(\w+)/.exec(className || "");
+                            return !inline && match ? (
+                              <div className="my-4">
+                                <SyntaxHighlighter
+                                  style={vscDarkPlus as any}
+                                  language={match[1]}
+                                  PreTag="div"
+                                  customStyle={{
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    lineHeight: '1.5',
+                                  }}
+                                >
+                                  {String(children).replace(/\n$/, "")}
+                                </SyntaxHighlighter>
+                              </div>
+                            ) : (
+                              <code className={`${className || ""} bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}>
+                                {children}
+                              </code>
+                            );
+                          },
+                          p: ({ children }) => (
+                            <p className="mb-4 last:mb-0 text-white/90 leading-relaxed">{children}</p>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="mb-4 space-y-1 text-white/90">{children}</ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className="mb-4 space-y-1 text-white/90">{children}</ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className="text-white/90">{children}</li>
+                          ),
+                          h1: ({ children }) => (
+                            <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0">{children}</h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 className="text-xl font-semibold text-white mb-3 mt-5 first:mt-0">{children}</h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">{children}</h3>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic">{children}</blockquote>
+                          ),
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
+                    {m.attachments &&
+                      m.attachments.map((att, index) => (
+                        <div key={index} className="mt-4">
+                          {att.file_url.startsWith("data:image") ? (
+                            <img
+                              src={att.file_url}
+                              alt={att.file_name}
+                              className="max-w-md rounded-lg shadow-lg"
+                            />
+                          ) : (
+                            <a
+                              href={att.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-2 text-blue-400 hover:text-blue-300 hover:underline"
+                            >
+                              <span>{att.file_name}</span>
+                            </a>
+                          )}
+                        </div>
+                      ))}
                   </div>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
-                  {m.attachments &&
-                    m.attachments.map((att, index) => (
-                      <div key={index} className="mt-2">
-                        {att.file_url.startsWith("data:image") ? (
-                          <img
-                            src={att.file_url}
-                            alt={att.file_name}
-                            className="max-w-xs max-h-xs rounded"
-                          />
-                        ) : (
-                          <a
-                            href={att.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-300 hover:underline"
-                          >
-                            {att.file_name}
-                          </a>
-                        )}
+                ) : (
+                  // User message - keep bubble styling
+                  <div className="max-w-xl">
+                    <div className="bg-blue-600 text-white rounded-2xl px-4 py-3 shadow-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="font-medium text-sm text-blue-100">You</div>
+                        <button
+                          type="button"
+                          onClick={() => handleEditMessage(m)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-200 hover:text-white hover:bg-blue-500/30 rounded"
+                          title="Edit message"
+                        >
+                          <Pencil />
+                        </button>
                       </div>
-                    ))}
-                  <div className="text-xs opacity-70 mt-1">
-                    {new Date(m.createdAt).toLocaleTimeString()}
+                      <div className="text-white leading-relaxed">
+                        <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
+                      </div>
+                      {m.attachments &&
+                        m.attachments.map((att, index) => (
+                          <div key={index} className="mt-3">
+                            {att.file_url.startsWith("data:image") ? (
+                              <img
+                                src={att.file_url}
+                                alt={att.file_name}
+                                className="max-w-xs rounded-lg"
+                              />
+                            ) : (
+                              <a
+                                href={att.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-200 hover:text-white hover:underline"
+                              >
+                                {att.file_name}
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      <div className="text-xs text-blue-200/70 mt-2">
+                        {new Date(m.createdAt).toLocaleTimeString()}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
@@ -963,91 +1097,127 @@ export default function ChatPage() {
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 z-20">
-          <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-            <div className="chat-input-unified rounded-t-2xl p-4">
-              {editingMessage && (
-                <div className="mb-2 p-2 bg-blue-600/20 border border-blue-500/30 rounded flex items-center justify-between">
-                  <span className="text-blue-300 text-sm">
-                    Editing message...
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="text-blue-400 hover:text-blue-300 text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-              {attachedFile && (
-                <div className="mb-2 p-2 bg-gray-700 rounded flex items-center justify-between">
-                  {attachedPreview ? (
-                    <img
-                      src={attachedPreview}
-                      alt="Preview"
-                      className="max-h-16 max-w-xs rounded"
-                    />
-                  ) : (
-                    <span className="text-white text-sm">
-                      {attachedFile.name}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={removeAttachedFile}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    <XSquare />
-                  </button>
-                </div>
-              )}
-              <div className="flex items-end space-x-3">
-                <textarea
-                  className="w-full bg-transparent text-white placeholder-white/50 resize-none focus:outline-none text-lg leading-relaxed p-3 rounded-lg border border-gray-600 focus:border-blue-500"
-                  value={input}
-                  placeholder="Type your message..."
-                  onChange={(e) => setInput(e.target.value)}
-                  disabled={isSending}
-                  rows={1}
-                  style={{ minHeight: "3rem", maxHeight: "10rem" }} // Adjusted minHeight
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit(e as any); // Cast to any if type conflict, or adjust handleSubmit
-                    }
-                  }}
-                />
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  style={{ display: "none" }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending || editingMessage !== null}
-                  className="p-3 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus:outline-none disabled:opacity-50"
-                >
-                  <Paperclip />
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSending || (!input.trim() && !attachedFile)}
-                  className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors focus:outline-none disabled:opacity-50"
-                >
-                  {isSending ? (
-                    <Loader2 />
-                  ) : editingMessage ? (
-                    <span>Update</span>
-                  ) : (
-                    <SendHorizonal />
-                  )}{" "}
-                  {/* Show "Update" when editing */}
-                </button>
-              </div>
+          {/* Scroll to bottom button */}
+          {showScrollButton && (
+            <div className="flex justify-center mb-4">
+              <button
+                onClick={scrollToBottom}
+                className="bg-gray-800/90 hover:bg-gray-700/90 backdrop-blur-sm border border-gray-600/50 text-white/80 hover:text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 text-sm font-medium"
+                title="Scroll to bottom"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 13l3 3 3-3"/>
+                  <path d="M7 6l3 3 3-3"/>
+                </svg>
+                <span>Scroll to bottom</span>
+              </button>
             </div>
-          </form>
+          )}
+          <div className="pt-8 pb-6">
+            <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
+              <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-4 shadow-2xl">
+                {editingMessage && (
+                  <div className="mb-3 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span className="text-blue-300 text-sm font-medium">
+                        Editing message...
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 rounded-md hover:bg-blue-500/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {attachedFile && (
+                  <div className="mb-3 p-3 bg-gray-700/50 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      {attachedPreview ? (
+                        <img
+                          src={attachedPreview}
+                          alt="Preview"
+                          className="w-12 h-12 object-cover rounded-lg"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center">
+                          <span className="text-gray-300 text-xs font-medium">FILE</span>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-white text-sm font-medium truncate max-w-xs">
+                          {attachedFile.name}
+                        </div>
+                        <div className="text-gray-400 text-xs">
+                          {(attachedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeAttachedFile}
+                      className="text-red-400 hover:text-red-300 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
+                    >
+                      <XSquare />
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-end space-x-3">
+                  <div className="flex-1">
+                    <textarea
+                      className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-base leading-relaxed p-3 rounded-xl border border-gray-600/50 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      value={input}
+                      placeholder="Type your message..."
+                      onChange={(e) => setInput(e.target.value)}
+                      disabled={isSending}
+                      rows={1}
+                      style={{ minHeight: "3rem", maxHeight: "8rem" }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSubmit(e as any);
+                        }
+                      }}
+                    />
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    style={{ display: "none" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSending || editingMessage !== null}
+                    className="p-3 text-gray-400 hover:text-white transition-colors rounded-xl hover:bg-gray-700/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Attach file"
+                  >
+                    <Paperclip />
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSending || (!input.trim() && !attachedFile)}
+                    className="p-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-xl transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                    title={editingMessage ? "Update message" : "Send message"}
+                  >
+                    {isSending ? (
+                      <div className="animate-spin">
+                        <Loader2 />
+                      </div>
+                    ) : editingMessage ? (
+                      <span className="text-sm font-medium">Update</span>
+                    ) : (
+                      <SendHorizonal />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
