@@ -13,13 +13,41 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
-// Placeholder for icons if lucide-react is not used or to avoid import errors
-const SendHorizonal = () => <span>Send</span>;
-const Paperclip = () => <span>Attach</span>;
-const XSquare = () => <span>X</span>;
-const Loader2 = () => <span>Loading...</span>;
-const Pencil = () => <span>Edit</span>;
-const Recycle = () => <span>Regen</span>;
+// SVG Icon components
+const SendHorizonal = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+  </svg>
+);
+const Paperclip = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+const XSquare = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 6L6 18M6 6l12 12"/>
+  </svg>
+);
+const Loader2 = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12a9 9 0 11-6.219-8.56"/>
+  </svg>
+);
+const Pencil = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+  </svg>
+);
+const Recycle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+    <path d="M21 3v5h-5"/>
+    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+    <path d="M8 16H3v5"/>
+  </svg>
+);
 
 interface AiModel {
   value: string;
@@ -1260,71 +1288,10 @@ export default function ChatPage() {
         )}
         <div className="pt-8 pb-6">
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
-            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-4 shadow-2xl">
-              {/* Model Controls Row */}
-              <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                  {/* Model Selector */}
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white/70 text-sm font-medium">Model:</span>
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
-                      disabled={isLoadingModels || availableModels.length === 0}
-                    >
-                      {isLoadingModels && <option value="" className="bg-gray-800 text-white">Loading models...</option>}
-                      {!isLoadingModels && availableModels.length === 0 && (
-                        <option value="" className="bg-gray-800 text-white">No models available</option>
-                      )}
-                      {availableModels.map((m) => (
-                        <option key={m.value} value={m.value} className="bg-gray-800 text-white">
-                          {m.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Web Search Toggle */}
-                  {currentModelSupportsWebSearch() && (
-                    <div className="flex items-center space-x-3">
-                      <div className="w-px h-6 bg-white/20"></div>
-                      <label className="flex items-center space-x-2 cursor-pointer glass-button-sidebar px-3 py-2 rounded-lg hover:shadow-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={useWebSearch}
-                          onChange={(e) => setUseWebSearch(e.target.checked)}
-                          className="w-4 h-4 text-blue-600 bg-transparent border-2 border-white/40 rounded focus:ring-blue-500 focus:ring-2"
-                        />
-                        <span className="text-white text-sm font-medium">Web Search</span>
-                      </label>
-                      <div className="group relative">
-                        <button
-                          type="button"
-                          className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
-                        >
-                          <svg 
-                            className="w-3 h-3 text-gray-400 hover:text-white cursor-help" 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M9,9h0a3,3,0,0,1,5.12,2.12h0A3,3,0,0,1,13,14.26V16"/>
-                            <circle cx="12" cy="20" r="1"/>
-                          </svg>
-                        </button>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          Enable real-time web search for current information
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div className="glass-effect backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col">
 
               {editingMessage && (
-                <div className="mb-3 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-between">
+                <div className="mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                     <span className="text-blue-300 text-sm font-medium">
@@ -1340,20 +1307,25 @@ export default function ChatPage() {
                   </button>
                 </div>
               )}
-              {useWebSearch && currentModelSupportsWebSearch() && (
-                <div className="mb-3 p-3 bg-green-600/10 border border-green-500/20 rounded-xl flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="11" cy="11" r="8"/>
-                    <path d="M21 21l-4.35-4.35"/>
-                  </svg>
-                  <span className="text-green-300 text-sm font-medium">
-                    Web search enabled - responses will include real-time information
-                  </span>
-                </div>
-              )}
+
+              <textarea
+                className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
+                value={input}
+                placeholder="Ask anything..."
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isSending}
+                rows={1}
+                style={{ minHeight: "2.5rem", maxHeight: "8rem" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e as any);
+                  }
+                }}
+              />
+
               {attachedFiles.length > 0 && (
-                <div className="mb-3 p-3 bg-gray-700/50 rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div className="mb-3 p-3 glass-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {attachedFiles.map((file, index) => (
                     <div key={index} className="relative group">
                       {attachedPreviews[index] ? (
@@ -1363,7 +1335,7 @@ export default function ChatPage() {
                           className="w-full h-24 object-cover rounded-lg"
                         />
                       ) : (
-                        <div className="w-full h-24 bg-gray-600 rounded-lg flex flex-col items-center justify-center p-2">
+                        <div className="w-full h-24 glass-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
                           <span className="text-gray-300 text-xs font-medium text-center truncate w-full">{file.name}</span>
                           <span className="text-gray-400 text-xs mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
                         </div>
@@ -1371,7 +1343,7 @@ export default function ChatPage() {
                       <button
                         type="button"
                         onClick={() => removeAttachedFile(index)}
-                        className="absolute top-1 right-1 text-white bg-black/50 hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                        className="absolute top-1 right-1 text-white bg-black/60 backdrop-filter backdrop-blur-sm hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
                         title="Remove file"
                       >
                         <XSquare />
@@ -1380,44 +1352,86 @@ export default function ChatPage() {
                   ))}
                 </div>
               )}
-              <div className="flex items-end space-x-3">
-                <div className="flex-1">
-                  <textarea
-                    className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-base leading-relaxed p-3 rounded-xl border border-gray-600/50 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    value={input}
-                    placeholder="Type your message..."
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={isSending}
-                    rows={1}
-                    style={{ minHeight: "3rem", maxHeight: "8rem" }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit(e as any);
-                      }
-                    }}
-                  />
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      style={{ display: "none" }}
+                      multiple
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSending || editingMessage !== null}
+                      className="text-gray-400 hover:text-white transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Attach file"
+                    >
+                      <Paperclip />
+                    </button>
+
+                  <div className="flex items-center gap-3">
+                    {/* Model Selector */}
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
+                        disabled={isLoadingModels || availableModels.length === 0}
+                      >
+                        {isLoadingModels && <option value="" className="bg-gray-800 text-white">Loading models...</option>}
+                        {!isLoadingModels && availableModels.length === 0 && (
+                          <option value="" className="bg-gray-800 text-white">No models available</option>
+                        )}
+                        {availableModels.map((m) => (
+                          <option key={m.value} value={m.value} className="bg-gray-800 text-white">
+                            {m.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Web Search Toggle */}
+                    {currentModelSupportsWebSearch() && (
+                      <div className="flex items-center space-x-3">
+                        <div className="group relative">
+                          <button
+                            type="button"
+                            onClick={() => setUseWebSearch(!useWebSearch)}
+                            className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                              useWebSearch 
+                                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' 
+                                : 'glass-button-sidebar text-white/70 hover:text-white'
+                            }`}
+                            title={useWebSearch ? "Disable web search" : "Enable web search"}
+                          >
+                            <svg 
+                              className="w-5 h-5" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                              strokeWidth="2"
+                            >
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                              <path d="M2 12h20"/>
+                            </svg>
+                          </button>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                            {useWebSearch ? "Disable web search" : "Enable real-time web search"}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  style={{ display: "none" }}
-                  multiple
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending || editingMessage !== null}
-                  className="p-3 text-gray-400 hover:text-white transition-colors rounded-xl hover:bg-gray-700/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Attach file"
-                >
-                  <Paperclip />
-                </button>
+
                 <button
                   type="submit"
                   disabled={isSending || (!input.trim() && attachedFiles.length === 0)}
-                  className="p-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-xl transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                  className="w-10 h-10 flex items-center justify-center bg-white hover:bg-gray-200 disabled:bg-gray-500 text-black rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                   title={editingMessage ? "Update message" : "Send message"}
                 >
                   {isSending ? (
