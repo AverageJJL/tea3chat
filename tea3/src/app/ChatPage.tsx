@@ -47,7 +47,7 @@ interface SupabaseAttachment {
 
 interface SupabaseMessage {
   id: string;
-  threadId: string;
+  threadId: string; // this may be the shared_id which is the universal ID
   clerk_user_id: string;
   role: "user" | "assistant";
   content: string;
@@ -59,6 +59,7 @@ interface SupabaseMessage {
 
 interface SupabaseThread {
   id: string;
+  shared_id: string; // This is the universal ID used across both Dexie and Supabase
   dexie_id: number | null;
   clerk_user_id: string;
   title: string;
@@ -145,34 +146,51 @@ async function fetchAndStoreCloudData() {
         for (const remoteThread of supabaseThreads) {
           // let localThreadId: number | undefined;
           
-          const threadSupabaseId = remoteThread.id;
+          const threadSupabaseId = remoteThread.shared_id;
 
-          const threadPayloadToStore: Omit<Thread, "id"> = {
-            supabase_id: remoteThread.id,
-            userId: remoteThread.clerk_user_id,
-            title: remoteThread.title,
-            createdAt: new Date(remoteThread.created_at),
-            updatedAt: new Date(remoteThread.updated_at),
-          };
+          const existingLocalThread = await db.threads
+            .where("supabase_id")
+            .equals(threadSupabaseId)
+            .first();
 
-          await db.threads.put(threadPayloadToStore);
+          if (!existingLocalThread) {
+            const threadPayloadToStore: Omit<Thread, "id"> = {
+              supabase_id: threadSupabaseId,
+              userId: remoteThread.clerk_user_id,
+              title: remoteThread.title,
+              createdAt: new Date(remoteThread.created_at),
+              updatedAt: new Date(remoteThread.updated_at),
+            };
+          
+            await db.threads.put(threadPayloadToStore);
+          } 
 
           for (const remoteMessage of remoteThread.messages) {
-            const localMessagePayload: Message = {
-              supabase_id: remoteMessage.id,
-              thread_supabase_id: threadSupabaseId, // Link using the universal ID
-              role: remoteMessage.role,
-              content: remoteMessage.content,
-              attachments: remoteMessage.attachments.map((att) => ({
-                supabase_id: att.id,
-                file_name: att.file_name,
-                file_url: att.file_url,
-              })),
-              createdAt: new Date(remoteMessage.created_at),
-              model: remoteMessage.model,
-            };
-            // Use .put() for messages as well.
-            await db.messages.put(localMessagePayload);
+            const messageSupabaseId = (remoteMessage as any).shared_id;
+            if (!messageSupabaseId) continue;
+
+            const existingLocalMessage = await db.messages
+              .where("supabase_id")
+              .equals(messageSupabaseId)
+              .first();
+
+            if (!existingLocalMessage) {
+              const localMessagePayload: Message = {
+                supabase_id: messageSupabaseId,
+                thread_supabase_id: threadSupabaseId, // Link using the universal ID
+                role: remoteMessage.role,
+                content: remoteMessage.content,
+                attachments: remoteMessage.attachments.map((att) => ({
+                  supabase_id: att.id,
+                  file_name: att.file_name,
+                  file_url: att.file_url,
+                })),
+                createdAt: new Date(remoteMessage.created_at),
+                model: remoteMessage.model,
+              };
+              // Use .put() for messages as well.
+              await db.messages.put(localMessagePayload);
+              }
             }
           } 
       });
@@ -452,9 +470,14 @@ export default function ChatPage() {
       setIsSending(false);
       // Always sync the thread after an edit operation completes or fails.
       if (editingMessage?.thread_supabase_id) {
-        const finalThreadData = await db.threads.get({
-          supabase_id: editingMessage.thread_supabase_id,
-        });
+        // const finalThreadData = await db.threads.get({
+        //   supabase_id: ,
+        // });
+        const finalThreadData = await db.threads
+        .where("supabase_id")
+        .equals(editingMessage.thread_supabase_id)
+        .first();
+        
         const finalMessagesData = await db.messages
           .where("thread_supabase_id")
           .equals(editingMessage.thread_supabase_id)
@@ -489,6 +512,13 @@ export default function ChatPage() {
         updatedAt: new Date(),
       };
       await db.threads.put(newThreadData);
+
+      await syncFullThreadToBackend({
+        threadData: newThreadData,
+        messagesData: [],
+        attachmentsData: [],
+      });
+      
       currentSupabaseThreadId = newThreadSupabaseId;
       navigate(`/chat/${newThreadSupabaseId}`, { replace: true });
     } else {
@@ -522,6 +552,7 @@ export default function ChatPage() {
     // Create User Message in Dexie
     const currentInput = input; // Capture input before clearing it.
     const userMessageData: Message = {
+      supabase_id: uuidv4(),
       thread_supabase_id: currentSupabaseThreadId,
       role: "user",
       content: currentInput,
@@ -533,6 +564,7 @@ export default function ChatPage() {
 
     // Create Assistant Placeholder Message in Dexie
     const assistantMessageData: Message = {
+      supabase_id: uuidv4(),
       thread_supabase_id: currentSupabaseThreadId,
       role: "assistant",
       content: "",
@@ -599,9 +631,10 @@ export default function ChatPage() {
     // Sync the entire thread state after the operation completes or fails.
     if (currentSupabaseThreadId) {
       // BUG FIX: Look up thread using the correct universal ID.
-      const finalThreadData = await db.threads.get({
-        supabase_id: currentSupabaseThreadId,
-      });
+      const finalThreadData = await db.threads
+        .where("supabase_id")
+        .equals(currentSupabaseThreadId)
+        .first();
       // BUG FIX: Query messages using the correct universal ID.
       const finalMessagesData = await db.messages
         .where("thread_supabase_id")

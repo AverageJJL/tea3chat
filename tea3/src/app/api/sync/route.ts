@@ -84,15 +84,19 @@ export async function POST(request: Request) {
     for (const msg of messagesData) {
       const { data: message, error: messageError } = await supabase
         .from('messages')
-        .insert({
+        .upsert({
           // dexie_id: msg.id, // Store local message ID if needed
+          shared_id: msg.supabase_id,
           threadId: supabaseThreadId,
           clerk_user_id: userId, // For RLS on messages table
           role: msg.role,
           content: msg.content,
           model: msg.model,
           created_at: msg.createdAt,
-        })
+        },
+          {
+            onConflict: 'shared_id', 
+          })
         .select()
         .single();
 
@@ -167,6 +171,7 @@ export async function GET(request: Request) {
       .from('threads')
       .select(`
         id,
+        shared_id,
         dexie_id,
         clerk_user_id,
         title,
@@ -174,6 +179,7 @@ export async function GET(request: Request) {
         updated_at,
         messages (
           id,
+          shared_id,
           threadId,
           clerk_user_id,
           role,

@@ -10,7 +10,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ userId, onNewChat }: SidebarProps) {
-  const { threadId: currentThreadIdParam } = useParams<{ threadId?: string }>();
+ const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
 
   const threads = useLiveQuery(
@@ -26,12 +26,12 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     [] 
   );
 
-  const handleDeleteThread = async (id: number) => {
+  const handleDeleteThread = async (supabaseIdToDelete: string) => {
     const confirmDelete = confirm('Delete this chat?');
     if (!confirmDelete) return;
-    await db.messages.where('threadId').equals(id).delete();
-    await db.threads.delete(id);
-    if (currentThreadIdParam === id.toString()) {
+    await db.messages.where('thread_supabase_id').equals(supabaseIdToDelete).delete();
+    await db.threads.delete(supabaseIdToDelete);
+    if (supabaseThreadId === supabaseIdToDelete) {
       navigate('/chat');
     }
   };
@@ -59,9 +59,9 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
             {threads.map((thread) => (
               <li key={thread.supabase_id} className="flex items-center justify-between group">
                 <Link
-                  to={`/chat/${thread.superbase_id}`}
+                  to={`/chat/${thread.supabase_id}`}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm truncate transition-colors
-                    ${currentThreadIdParam === thread.superbase_id?.toString()
+                    ${supabaseThreadId === thread.supabase_id?.toString()
                       ? "bg-white/20 text-white font-semibold"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                     }`}
@@ -71,7 +71,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => handleDeleteThread(thread.superbase_id!)}
+                  onClick={() => handleDeleteThread(thread.supabase_id!)}
                   className="ml-2 w-6 h-6 flex items-center justify-center rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-400/50 opacity-0 group-hover:opacity-100"
                   title="Delete chat"
                 >
