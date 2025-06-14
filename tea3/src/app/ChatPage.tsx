@@ -393,12 +393,19 @@ export default function ChatPage() {
   
           m.attachments.forEach(attachment => {
             const url = attachment.file_url;
+            const mimeType = attachment.mime_type;
+            
             // Basic check for image types for image_url, otherwise treat as generic file_url
-            if (url.match(/^data:image|\.(png|jpe?g|gif|webp)$/i)) {
+            if (mimeType?.startsWith('image/')) {
               contentArray.push({ type: "image_url", image_url: { url } });
             } else {
               // For non-image files or when model doesn't support images but we have a URL
-              contentArray.push({ type: "file_url", file_url: { url } });
+              contentArray.push({ type: "file_url", file_url: { 
+                  url,
+                  mime_type: mimeType,
+                  file_name: attachment.file_name
+                } 
+              });
             }
           });
   
@@ -591,10 +598,14 @@ export default function ChatPage() {
       const uploadResults = await Promise.all(uploadPromises);
 
       for (const result of uploadResults) {
-        if (result.error || !result.supabaseUrl || !result.fileName) {
+        if (result.error || !result.supabaseUrl || !result.fileName || !result.mimeType) {
           throw new Error(`Supabase upload failed: ${result.error}`);
         }
-        attachmentsForDb.push({ file_name: result.fileName, file_url: result.supabaseUrl });
+        attachmentsForDb.push({ 
+          file_name: result.fileName, 
+          file_url: result.supabaseUrl,
+          mime_type: result.mimeType
+        });
       }
     }
 
