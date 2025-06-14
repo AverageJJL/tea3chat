@@ -1,6 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, createPartFromUri, Part } from "@google/genai";
 
 // Groq provider
 const groq = createOpenAI({
@@ -55,6 +55,48 @@ async function fetchFileAsBase64(url: string, originalMimeType?: string): Promis
   } catch (error) {
     console.error('Error fetching file:', error);
     throw new Error(`Failed to fetch file from URL: ${url}`);
+  }
+}
+
+// New helper function to upload files to Gemini and get a file part
+async function handleFileUploadForGemini(url: string, mimeType: string, displayName: string): Promise<Part | null> {
+  try {
+    console.log(`[Gemini File API] Fetching: ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to fetch file for Gemini upload: ${response.status}`);
+    
+    const fileBuffer = await response.arrayBuffer();
+
+    console.log(`[Gemini File API] Uploading ${displayName} (${mimeType}) to Gemini...`);
+    const uploadedFile = await geminiClient.files.upload({
+      file: new Blob([fileBuffer], { type: mimeType }),
+      config: {
+        displayName: displayName,
+      }
+    });
+
+    let getFile = await geminiClient.files.get({ name: uploadedFile.name });
+    while (getFile.state === 'PROCESSING') {
+      console.log(`[Gemini File API] Status: ${getFile.state}, retrying in 2 seconds...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      getFile = await geminiClient.files.get({ name: uploadedFile.name });
+    }
+
+    if (getFile.state === 'FAILED') {
+      console.error('[Gemini File API] File processing failed:', getFile);
+      throw new Error('File processing by Gemini failed.');
+    }
+    
+    if (getFile.state === 'ACTIVE' && getFile.uri) {
+      console.log(`[Gemini File API] File processed. URI: ${getFile.uri}`);
+      return createPartFromUri(getFile.uri, getFile.mimeType);
+    } else {
+      console.error('[Gemini File API] File is not active or has no URI.', getFile);
+      return null;
+    }
+  } catch (error) {
+    console.error('[Gemini File API] Error during file upload and processing:', error);
+    return null;
   }
 }
 
@@ -189,40 +231,48 @@ export async function POST(req: Request) {
                 }
               }
             } else if (part.type === 'file_url') {
-              // Handle file attachments (images, PDFs, and other supported formats)
+              const fileUrl = part.file_url.url;
               const mimeType = part.file_url.mime_type || 'application/octet-stream';
-              
-              // Gemini supports images, PDFs, and various document formats
-              const supportedTypes = [
-                'image/', 'application/pdf', 'text/', 'application/json',
-                'application/xml', 'application/rtf', 'text/csv'
-              ];
-              
-              const isSupported = supportedTypes.some(type => mimeType.startsWith(type));
-              
-              if (isSupported) {
-                if (part.file_url.url.startsWith('data:')) {
-                  const [mimeInfo, base64Data] = part.file_url.url.split(',');
-                  const actualMimeType = mimeInfo.match(/data:([^;]+)/)?.[1] || mimeType;
-                  parts.push({ 
-                    inlineData: { 
-                      data: base64Data, 
-                      mimeType: actualMimeType 
-                    } 
-                  });
+              const fileName = part.file_url.file_name || 'attached_file';
+
+              if (mimeType === 'application/pdf') {
+                // For PDFs, use the new Gemini File API upload mechanism
+                const uploadedFilePart = await handleFileUploadForGemini(fileUrl, mimeType, fileName);
+                if (uploadedFilePart) {
+                  parts.push(uploadedFilePart);
                 } else {
-                  // For external file URLs, fetch and convert to base64
-                  try {
-                    const { data, mimeType: fetchedMimeType } = await fetchFileAsBase64(part.file_url.url, mimeType);
+                  console.warn(`Skipping PDF file that failed to upload: ${fileName}`);
+                }
+              } else {
+                // For other supported file types, use the existing inlineData method
+                const supportedTypes = [
+                  'image/', 'text/', 'application/json',
+                  'application/xml', 'application/rtf', 'text/csv'
+                ];
+                const isSupported = supportedTypes.some(type => mimeType.startsWith(type));
+                
+                if (isSupported) {
+                  if (part.file_url.url.startsWith('data:')) {
+                    const [mimeInfo, base64Data] = part.file_url.url.split(',');
+                    const actualMimeType = mimeInfo.match(/data:([^;]+)/)?.[1] || mimeType;
                     parts.push({ 
                       inlineData: { 
-                        data: data, 
-                        mimeType: fetchedMimeType 
+                        data: base64Data, 
+                        mimeType: actualMimeType 
                       } 
                     });
-                  } catch (error) {
-                    console.error('Failed to fetch external file:', error);
-                    // Skip this file part if it fails to fetch
+                  } else {
+                    try {
+                      const { data, mimeType: fetchedMimeType } = await fetchFileAsBase64(fileUrl, mimeType);
+                      parts.push({ 
+                        inlineData: { 
+                          data: data, 
+                          mimeType: fetchedMimeType 
+                        } 
+                      });
+                    } catch (error) {
+                      console.error('Failed to fetch external file for inlineData:', error);
+                    }
                   }
                 }
               }

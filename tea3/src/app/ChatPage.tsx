@@ -217,8 +217,8 @@ export default function ChatPage() {
   const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [attachedPreviews, setAttachedPreviews] = useState<string[]>([]);
   // Add drag and drop state
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   // Add edit message state
@@ -384,29 +384,31 @@ export default function ChatPage() {
     modelSupportsImagesFlag: boolean
   ) => {
     return msgs.map((m) => {
-      if (
-        m.attachments &&
-        m.attachments.length > 0 &&
-        m.attachments[0].file_url
-      ) {
-        // Check if model supports images OR if the attachment is a data URL (local preview)
-        if (
-          modelSupportsImagesFlag ||
-          m.attachments[0].file_url.startsWith("data:")
-        ) {
+      if (m.attachments && m.attachments.length > 0) {
+        if (modelSupportsImagesFlag) {
           const contentArray: any[] = [];
           if (m.content && m.content.trim()) {
-            // Ensure content is not empty before adding
             contentArray.push({ type: "text", text: m.content });
           }
-          const url = m.attachments[0].file_url;
-          // Basic check for image types for image_url, otherwise treat as generic file_url
-          if (url.match(/^data:image|\\.(png|jpe?g|gif|webp)$/i)) {
-            contentArray.push({ type: "image_url", image_url: { url } });
-          } else {
-            // For non-image files or when model doesn't support images but we have a URL
-            contentArray.push({ type: "file_url", file_url: { url } });
-          }
+  
+          m.attachments.forEach(attachment => {
+            const url = attachment.file_url;
+            const mimeType = attachment.mime_type;
+            
+            // Basic check for image types for image_url, otherwise treat as generic file_url
+            if (mimeType?.startsWith('image/')) {
+              contentArray.push({ type: "image_url", image_url: { url } });
+            } else {
+              // For non-image files or when model doesn't support images but we have a URL
+              contentArray.push({ type: "file_url", file_url: { 
+                  url,
+                  mime_type: mimeType,
+                  file_name: attachment.file_name
+                } 
+              });
+            }
+          });
+  
           return { role: m.role, content: contentArray };
         }
       }
@@ -416,14 +418,14 @@ export default function ChatPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
   e.preventDefault();
-  if ((!input.trim() && !attachedFile) || isSending || !user || !user.id) {
+  if ((!input.trim() && attachedFiles.length === 0) || isSending || !user || !user.id) {
     return;
   }
 
   const modelSupportsImages =
     selectedModel === "meta-llama/llama-4-maverick:free" ||
     selectedModel === "gemini-2.5-flash-preview-05-20";
-  if (attachedFile && !modelSupportsImages) {
+  if (attachedFiles.length > 0 && !modelSupportsImages) {
     setError("Attachments are not supported by the selected model.");
     return;
   }
@@ -477,8 +479,8 @@ export default function ChatPage() {
         // Clear the editing state *before* the API call.
         setEditingMessage(null);
         setInput("");
-        setAttachedFile(null);
-        setAttachedPreview(null);
+        setAttachedFiles([]);
+        setAttachedPreviews([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
 
         // Call the AI API to regenerate the response.
@@ -591,16 +593,20 @@ export default function ChatPage() {
 
     // File Upload Logic
     let attachmentsForDb: MessageAttachment[] = [];
-    let uploadedSupabaseUrl: string | null = null;
-    if (attachedFile) {
-      const { supabaseUrl, fileName, error } = await uploadFileToSupabaseStorage(
-        attachedFile
-      );
-      if (error || !supabaseUrl || !fileName) {
-        throw new Error(`Supabase upload failed: ${error}`);
+    if (attachedFiles.length > 0) {
+      const uploadPromises = attachedFiles.map(file => uploadFileToSupabaseStorage(file));
+      const uploadResults = await Promise.all(uploadPromises);
+
+      for (const result of uploadResults) {
+        if (result.error || !result.supabaseUrl || !result.fileName || !result.mimeType) {
+          throw new Error(`Supabase upload failed: ${result.error}`);
+        }
+        attachmentsForDb.push({ 
+          file_name: result.fileName, 
+          file_url: result.supabaseUrl,
+          mime_type: result.mimeType
+        });
       }
-      uploadedSupabaseUrl = supabaseUrl;
-      attachmentsForDb = [{ file_name: fileName, file_url: supabaseUrl }];
     }
 
     // Create User Message in Dexie
@@ -629,8 +635,8 @@ export default function ChatPage() {
 
     // Clear inputs from UI
     setInput("");
-    setAttachedFile(null);
-    setAttachedPreview(null);
+    setAttachedFiles([]);
+    setAttachedPreviews([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     // Build history for AI, now including the new user message
@@ -719,8 +725,8 @@ export default function ChatPage() {
   const handleEditMessage = (msg: Message) => {
     setEditingMessage(msg);
     setInput(msg.content);
-    setAttachedFile(null);
-    setAttachedPreview(null);
+    setAttachedFiles([]);
+    setAttachedPreviews([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
     // Consider scrolling to the input area or the message being edited
     // messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -729,21 +735,21 @@ export default function ChatPage() {
   const handleCancelEdit = () => {
     setEditingMessage(null);
     setInput("");
-    setAttachedFile(null);
-    setAttachedPreview(null);
+    setAttachedFiles([]);
+    setAttachedPreviews([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removeAttachedFile = () => {
-    setAttachedFile(null);
-    setAttachedPreview(null);
+  const removeAttachedFile = (indexToRemove: number) => {
+    setAttachedFiles(files => files.filter((_, index) => index !== indexToRemove));
+    setAttachedPreviews(previews => previews.filter((_, index) => index !== indexToRemove));
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    processFile(file);
+    const files = e.target.files;
+    if (!files) return;
+    processFiles(Array.from(files));
   };
   // --- END HELPER FUNCTIONS ---
 
@@ -809,20 +815,26 @@ export default function ChatPage() {
   }; // End of handleRegenerate
 
   // Helper function to process a File object (used by both file input and drag&drop)
-  const processFile = (file: File) => {
-    if (attachedFile) {
-      setError("Please remove the current file before adding a new one.");
-      return;
-    }
+  const processFiles = (files: File[]) => {
+    setAttachedFiles(prev => [...prev, ...files]);
 
-    setAttachedFile(file);
-    if (file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = () => setAttachedPreview(reader.result as string);
-      reader.readAsDataURL(file);
-    } else {
-      setAttachedPreview(null);
-    }
+    const newPreviewPromises = files.map(file => {
+      return new Promise<string>(resolve => {
+        if (file.type.startsWith("image/")) {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        } else {
+          resolve(""); // For non-image files, we can use a placeholder or empty string
+        }
+      });
+    });
+
+    Promise.all(newPreviewPromises).then(newPreviews => {
+      setAttachedPreviews(prev => [...prev, ...newPreviews]);
+    });
+    
     setError(null); // Clear any previous errors
   };
 
@@ -861,13 +873,7 @@ export default function ChatPage() {
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
 
-    const file = files[0]; // Only handle the first file
-    if (files.length > 1) {
-      setError("Please drop only one file at a time.");
-      return;
-    }
-
-    processFile(file);
+    processFiles(files);
   };
 
   // --- RENDER ---
@@ -916,7 +922,7 @@ export default function ChatPage() {
       >
         <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
           {/* Welcome message when no messages */}
-          {(!messages || messages.length === 0) && !attachedFile && (
+          {(!messages || messages.length === 0) && attachedFiles.length === 0 && (
             <div className="flex flex-col items-center justify-center py-32 text-center">
               <div className="text-white text-2xl font-semibold mb-3">
                 Welcome to Tweak3 Chat
@@ -1346,36 +1352,32 @@ export default function ChatPage() {
                   </span>
                 </div>
               )}
-              {attachedFile && (
-                <div className="mb-3 p-3 bg-gray-700/50 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {attachedPreview ? (
-                      <img
-                        src={attachedPreview}
-                        alt="Preview"
-                        className="w-12 h-12 object-cover rounded-lg"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 bg-gray-600 rounded-lg flex items-center justify-center">
-                        <span className="text-gray-300 text-xs font-medium">FILE</span>
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-white text-sm font-medium truncate max-w-xs">
-                        {attachedFile.name}
-                      </div>
-                      <div className="text-gray-400 text-xs">
-                        {(attachedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </div>
+              {attachedFiles.length > 0 && (
+                <div className="mb-3 p-3 bg-gray-700/50 rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {attachedFiles.map((file, index) => (
+                    <div key={index} className="relative group">
+                      {attachedPreviews[index] ? (
+                        <img
+                          src={attachedPreviews[index]}
+                          alt="Preview"
+                          className="w-full h-24 object-cover rounded-lg"
+                        />
+                      ) : (
+                        <div className="w-full h-24 bg-gray-600 rounded-lg flex flex-col items-center justify-center p-2">
+                          <span className="text-gray-300 text-xs font-medium text-center truncate w-full">{file.name}</span>
+                          <span className="text-gray-400 text-xs mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachedFile(index)}
+                        className="absolute top-1 right-1 text-white bg-black/50 hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                        title="Remove file"
+                      >
+                        <XSquare />
+                      </button>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={removeAttachedFile}
-                    className="text-red-400 hover:text-red-300 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
-                  >
-                    <XSquare />
-                  </button>
+                  ))}
                 </div>
               )}
               <div className="flex items-end space-x-3">
@@ -1401,6 +1403,7 @@ export default function ChatPage() {
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   style={{ display: "none" }}
+                  multiple
                 />
                 <button
                   type="button"
@@ -1413,7 +1416,7 @@ export default function ChatPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSending || (!input.trim() && !attachedFile)}
+                  disabled={isSending || (!input.trim() && attachedFiles.length === 0)}
                   className="p-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-xl transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                   title={editingMessage ? "Update message" : "Send message"}
                 >

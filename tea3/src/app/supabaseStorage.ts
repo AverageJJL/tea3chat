@@ -24,15 +24,16 @@ const BUCKET_NAME = 'attachments'; // IMPORTANT: Create this bucket in your Supa
 interface UploadResponse {
   supabaseUrl: string | null;
   fileName: string | null; // This will be the original name of the file
+  mimeType: string | null;
   error: string | null;
 }
 
 export async function uploadFileToSupabaseStorage(file: File): Promise<UploadResponse> {
   if (!supabase) {
-    return { supabaseUrl: null, fileName: file?.name || null, error: "Supabase client is not initialized." };
+    return { supabaseUrl: null, fileName: file?.name || null, mimeType: file?.type || null, error: "Supabase client is not initialized." };
   }
   if (!file) {
-    return { supabaseUrl: null, fileName: null, error: "No file provided." };
+    return { supabaseUrl: null, fileName: null, mimeType: null, error: "No file provided." };
   }
 
   try {
@@ -54,11 +55,11 @@ export async function uploadFileToSupabaseStorage(file: File): Promise<UploadRes
 
     if (uploadError) {
       console.error("Supabase upload error object:", uploadError); // Log the full error object
-      return { supabaseUrl: null, fileName: file.name, error: uploadError.message };
+      return { supabaseUrl: null, fileName: file.name, mimeType: file.type, error: uploadError.message };
     }
 
     if (!uploadData) {
-        return { supabaseUrl: null, fileName: file.name, error: "Upload successful but no data returned from Supabase." };
+        return { supabaseUrl: null, fileName: file.name, mimeType: file.type, error: "Upload successful but no data returned from Supabase." };
     }
 
     console.log("Supabase upload successful, data:", uploadData);
@@ -73,7 +74,7 @@ export async function uploadFileToSupabaseStorage(file: File): Promise<UploadRes
       // It's possible the file is uploaded but the URL retrieval fails.
       // You might want to handle this by trying to construct the URL manually if your bucket is public
       // or by informing the user that the upload succeeded but the URL is unavailable.
-      return { supabaseUrl: null, fileName: file.name, error: "File uploaded but failed to get public URL." };
+      return { supabaseUrl: null, fileName: file.name, mimeType: file.type, error: "File uploaded but failed to get public URL." };
     }
     
     console.log(`Public URL for '${uploadData.path}': ${publicUrlData.publicUrl}`);
@@ -81,11 +82,12 @@ export async function uploadFileToSupabaseStorage(file: File): Promise<UploadRes
     return {
       supabaseUrl: publicUrlData.publicUrl,
       fileName: file.name, // Return the original file name
+      mimeType: file.type,
       error: null,
     };
 
   } catch (e: any) {
     console.error("Error in uploadFileToSupabaseStorage:", e);
-    return { supabaseUrl: null, fileName: file.name, error: e.message || "An unknown error occurred during upload." };
+    return { supabaseUrl: null, fileName: file.name, mimeType: file.type, error: e.message || "An unknown error occurred during upload." };
   }
 }

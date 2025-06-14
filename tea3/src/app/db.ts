@@ -15,6 +15,7 @@ export interface MessageAttachment {
   supabase_id?: string | null; 
   file_name: string;
   file_url: string; 
+  mime_type?: string;
   uploaded_at?: Date; // This would be set by Supabase, less critical for Dexie to hold before sync
 }
 
@@ -52,6 +53,25 @@ export class AppDB extends Dexie {
     this.version(4).stores({
       threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id", // <-- ADD forked_from_id
       messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    });
+    this.version(5).stores({
+      // No changes to threads
+      threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id",
+      // Remove uniqueness constraint on supabase_id for messages if it was ever there,
+      // and ensure it is properly indexed for lookups.
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    }).upgrade(tx => {
+      // This upgrade is mostly to force a schema reload for users who might have
+      // a bad schema version cached. No actual data modification is needed.
+      console.log("Upgrading database to version 5, ensuring message indexes are correct.");
+      return tx.table("messages").toCollection().first().then(() => {});
+    });
+    this.version(6).stores({
+      threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    }).upgrade(tx => {
+      console.log("Upgrading database to version 6 for attachment mime_type support.");
+      return tx.table("messages").toCollection().first().then(() => {});
     });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:
