@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, Thread, Message, MessageAttachment } from "./db"; // Ensure MessageAttachment is exported from db.ts
@@ -48,12 +48,6 @@ const Recycle = () => (
     <path d="M8 16H3v5"/>
   </svg>
 );
-
-interface AiModel {
-  value: string;
-  displayName: string;
-  supportsImages?: boolean; // Added from previous context
-}
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
 
@@ -287,14 +281,26 @@ async function syncThreadWithAttachments(supabaseThreadId: string) {
   }
 }
 
+interface ChatPageContext {
+  availableModels: { value: string; displayName: string; supportsImages?: boolean }[];
+  selectedModel: string;
+  setSelectedModel: React.Dispatch<React.SetStateAction<string>>;
+  isLoadingModels: boolean;
+  modelsError: string | null;
+}
+
 export default function ChatPage() {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
   const { user, isLoaded: isUserLoaded } = useUser();
+  const {
+    availableModels,
+    selectedModel,
+    setSelectedModel,
+    isLoadingModels,
+    modelsError,
+  } = useOutletContext<ChatPageContext>();
   
-  const [availableModels, setAvailableModels] = useState<AiModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>("");
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -334,6 +340,12 @@ export default function ChatPage() {
     }
   }, [error]);
 
+  useEffect(() => {
+    if (modelsError) {
+      setError(modelsError);
+    }
+  }, [modelsError]);
+
   // Helper function to check if current model supports web search
   const currentModelSupportsWebSearch = () => {
     return selectedModel === "gemini-2.5-flash-preview-05-20";
@@ -345,34 +357,6 @@ export default function ChatPage() {
       setUseWebSearch(false);
     }
   }, [selectedModel, useWebSearch]);
-
-  // --- MODEL FETCHING ---
-  useEffect(() => {
-    const fetchModels = async () => {
-      setIsLoadingModels(true);
-      try {
-        const response = await fetch("/api/chat"); // Assuming GET on /api/chat lists models
-        if (!response.ok) throw new Error("Failed to fetch models");
-        const data = await response.json();
-        if (data.models && data.models.length > 0) {
-          setAvailableModels(data.models);
-          // Default to Gemini model, fallback to first model if Gemini not available
-          const geminiModel = data.models.find(
-            (model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20"
-          );
-          setSelectedModel(
-            geminiModel ? geminiModel.value : data.models[0].value
-          );
-        }
-      } catch (err: any) {
-        setError(err.message || "Error loading models.");
-        console.error(err);
-      } finally {
-        setIsLoadingModels(false);
-      }
-    };
-    fetchModels();
-  }, []);
 
   // --- DATA FETCHING & SYNC ---
   const messages = useLiveQuery(
