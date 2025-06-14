@@ -201,7 +201,61 @@ async function fetchAndStoreCloudData() {
       console.error("Cloud sync failed:", cloudFetchResult.error);
     }
   } catch (error) {
-    console.error("Failed to fetch or store cloud data:", error);
+    // console.error("Failed to fetch or store cloud data:", error);
+  }
+}
+
+// Add this helper function inside ChatPage.tsx
+async function syncThreadWithAttachments(supabaseThreadId: string) {
+  const threadData = await db.threads
+    .where("supabase_id")
+    .equals(supabaseThreadId)
+    .first();
+
+  if (!threadData) {
+    console.error(
+      `Sync failed: Could not find thread with supabase_id ${supabaseThreadId}`
+    );
+    return;
+  }
+
+  const messagesData = await db.messages
+    .where("thread_supabase_id")
+    .equals(supabaseThreadId)
+    .toArray();
+
+  // ** THE FIX IS HERE **
+  // Create the payload for attachments by iterating through the messages
+  const attachmentsData: {
+    localMessageId: number;
+    file_name: string;
+    file_url: string;
+  }[] = [];
+  for (const msg of messagesData) {
+    if (msg.id && msg.attachments) {
+      for (const att of msg.attachments) {
+        // Ensure we have the necessary data before pushing
+        if (att.file_name && att.file_url) {
+          attachmentsData.push({
+            localMessageId: msg.id,
+            file_name: att.file_name,
+            file_url: att.file_url,
+          });
+        }
+      }
+    }
+  }
+
+  try {
+    // Call the sync function with the complete payload
+    await syncFullThreadToBackend({
+      threadData,
+      messagesData,
+      attachmentsData, // Pass the correctly populated array
+    });
+  } catch (syncError) {
+    console.error(`Sync failed for thread ${supabaseThreadId}:`, syncError);
+    // Optionally set an error state for the UI
   }
 }
 
@@ -539,11 +593,9 @@ export default function ChatPage() {
           .equals(editingMessage.thread_supabase_id)
           .toArray();
         if (finalThreadData) {
-          await syncFullThreadToBackend({
-            threadData: finalThreadData,
-            messagesData: finalMessagesData,
-            attachmentsData: [],
-          });
+          await syncThreadWithAttachments(
+            editingMessage.thread_supabase_id
+          );
         }
       }
     }
@@ -707,11 +759,7 @@ export default function ChatPage() {
 
       if (finalThreadData) {
         try {
-          await syncFullThreadToBackend({
-            threadData: finalThreadData,
-            messagesData: finalMessagesData,
-            attachmentsData: [], // Populate this if needed
-          });
+          await syncThreadWithAttachments(currentSupabaseThreadId);
         } catch (syncError) {
           console.error("Sync failed in finally block:", syncError);
           // Optionally set another error state for sync-specific failures.
