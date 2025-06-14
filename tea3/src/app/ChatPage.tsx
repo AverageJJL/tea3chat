@@ -91,31 +91,32 @@ async function syncFullThreadToBackend(
 
     if (result.success && result.data) {
       const syncedSupabaseThread = result.data.thread; // Assuming this is the structure from your backend
-      const syncedSupabaseMessages = result.data.messages;
+      //const syncedSupabaseMessages = result.data.messages;
 
       // Update local thread with Supabase confirmed shared_id
       // Ensure your backend returns the thread object with a 'shared_id' property
       if (
         syncedSupabaseThread &&
         syncedSupabaseThread.shared_id &&
-        payload.threadData.id
+        payload.threadData.id &&
+        !payload.threadData.supabase_id
       ) {
         await db.threads.update(payload.threadData.id, {
           supabase_id: syncedSupabaseThread.shared_id,
         });
       }
 
-      if (syncedSupabaseMessages && Array.isArray(syncedSupabaseMessages)) {
-        for (const syncedMsg of syncedSupabaseMessages) {
-          if (syncedMsg.dexie_id && syncedMsg.id) {
-            // Assumes backend POST response returns dexie_id for messages
-            await db.messages.update(syncedMsg.dexie_id, {
-              supabase_id: syncedMsg.id,
-            });
-            // TODO: Update attachments in Dexie with their supabase_ids if needed
-          }
-        }
-      }
+      // if (syncedSupabaseMessages && Array.isArray(syncedSupabaseMessages)) {
+      //   for (const syncedMsg of syncedSupabaseMessages) {
+      //     if (syncedMsg.dexie_id && syncedMsg.id) {
+      //       // Assumes backend POST response returns dexie_id for messages
+      //       await db.messages.update(syncedMsg.dexie_id, {
+      //         supabase_id: syncedMsg.id,
+      //       });
+      //       // TODO: Update attachments in Dexie with their supabase_ids if needed
+      //     }
+      //   }
+      // }
     }
     return result.data;
   } catch (error) {
@@ -170,7 +171,7 @@ async function fetchAndStoreCloudData() {
           } 
 
           for (const remoteMessage of remoteThread.messages) {
-            const messageSupabaseId = (remoteMessage as any).shared_id;
+            const messageSupabaseId = remoteMessage.shared_id;
             if (!messageSupabaseId) continue;
 
             const existingLocalMessage = await db.messages
@@ -559,11 +560,11 @@ export default function ChatPage() {
       };
       await db.threads.put(newThreadData);
 
-      await syncFullThreadToBackend({
+      syncFullThreadToBackend({
         threadData: newThreadData,
         messagesData: [],
         attachmentsData: [],
-      });
+      }).catch((err) => console.error("Initial thread sync failed:", err));
 
       currentSupabaseThreadId = newThreadSupabaseId;
       navigate(`/chat/${newThreadSupabaseId}`, { replace: true });
