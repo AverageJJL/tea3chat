@@ -225,9 +225,23 @@ export default function ChatPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   // Add scroll to bottom button state
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
+  // Add web search state
+  const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Helper function to check if current model supports web search
+  const currentModelSupportsWebSearch = () => {
+    return selectedModel === "gemini-2.5-flash-preview-05-20";
+  };
+
+  // Reset web search when switching to a model that doesn't support it
+  React.useEffect(() => {
+    if (!currentModelSupportsWebSearch() && useWebSearch) {
+      setUseWebSearch(false);
+    }
+  }, [selectedModel, useWebSearch]);
 
   // --- MODEL FETCHING ---
   useEffect(() => {
@@ -450,7 +464,11 @@ export default function ChatPage() {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+          body: JSON.stringify({ 
+            model: selectedModel, 
+            messages: historyForAI,
+            useWebSearch: useWebSearch && currentModelSupportsWebSearch()
+          }),
         });
 
         if (!response.body || !response.ok) {
@@ -605,7 +623,11 @@ export default function ChatPage() {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+      body: JSON.stringify({ 
+        model: selectedModel, 
+        messages: historyForAI,
+        useWebSearch: useWebSearch && currentModelSupportsWebSearch()
+      }),
     });
 
     if (!response.body || !response.ok) {
@@ -727,7 +749,11 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelToUse, messages: historyForAI }),
+        body: JSON.stringify({ 
+          model: modelToUse, 
+          messages: historyForAI,
+          useWebSearch: useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20"
+        }),
       });
       if (!response.ok || !response.body) throw new Error("API error");
       const reader = response.body.getReader();
@@ -856,6 +882,35 @@ export default function ChatPage() {
               </option>
             ))}
           </select>
+          {/* Web Search Toggle */}
+          {currentModelSupportsWebSearch() && (
+            <div className="flex items-center space-x-2">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useWebSearch}
+                  onChange={(e) => setUseWebSearch(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <span className="text-white text-sm font-medium">Web Search</span>
+              </label>
+              <div className="group relative">
+                <svg 
+                  className="w-4 h-4 text-gray-400 hover:text-white cursor-help" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9,9h0a3,3,0,0,1,5.12,2.12h0A3,3,0,0,1,13,14.26V16"/>
+                  <circle cx="12" cy="20" r="1"/>
+                </svg>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                  Enable real-time web search for current information
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         {user && (
           <div className="text-white">
@@ -1098,6 +1153,18 @@ export default function ChatPage() {
                   >
                     Cancel
                   </button>
+                </div>
+              )}
+              {useWebSearch && currentModelSupportsWebSearch() && (
+                <div className="mb-3 p-3 bg-green-600/10 border border-green-500/20 rounded-xl flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <span className="text-green-300 text-sm font-medium">
+                    Web search enabled - responses will include real-time information
+                  </span>
                 </div>
               )}
               {attachedFile && (
