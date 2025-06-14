@@ -465,37 +465,67 @@ export default function ChatPage() {
     msgs: Message[],
     modelSupportsImagesFlag: boolean
   ) => {
-    return msgs.map((m) => {
+    // 1) Build the normal user / assistant history first
+    const transformedHistory = msgs.map((m) => {
       if (m.attachments && m.attachments.length > 0) {
         if (modelSupportsImagesFlag) {
           const contentArray: any[] = [];
           if (m.content && m.content.trim()) {
             contentArray.push({ type: "text", text: m.content });
           }
-  
-          m.attachments.forEach(attachment => {
+
+          m.attachments.forEach((attachment) => {
             const url = attachment.file_url;
             const mimeType = attachment.mime_type;
-            
+
             // Basic check for image types for image_url, otherwise treat as generic file_url
-            if (mimeType?.startsWith('image/')) {
+            if (mimeType?.startsWith("image/")) {
               contentArray.push({ type: "image_url", image_url: { url } });
             } else {
-              // For non-image files or when model doesn't support images but we have a URL
-              contentArray.push({ type: "file_url", file_url: { 
+              contentArray.push({
+                type: "file_url",
+                file_url: {
                   url,
                   mime_type: mimeType,
-                  file_name: attachment.file_name
-                } 
+                  file_name: attachment.file_name,
+                },
               });
             }
           });
-  
+
           return { role: m.role, content: contentArray };
         }
       }
       return { role: m.role, content: m.content };
     });
+
+    // 2) Construct the system prompt that should precede the conversation.
+    const modelDisplayName =
+      availableModels.find((am) => am.value === selectedModel)?.displayName ||
+      selectedModel;
+    const currentTimestamp = new Date().toLocaleString(undefined, {
+      timeZoneName: "short",
+    });
+
+    const systemPrompt = `You are Tweak 3 Chat, an AI assistant powered by the ${modelDisplayName} model. Your role is to assist and engage in conversation while being helpful, respectful, and engaging.
+
+If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
+The current date and time including timezone is ${currentTimestamp}.
+Always use LaTeX for mathematical expressions:
+
+Inline math must be wrapped in escaped parentheses: (content)
+Do not use single dollar signs for inline math
+Display math must be wrapped in double dollar signs: (content)
+
+
+Do not use the backslash character to escape parenthesis. Use the actual parentheses instead.
+Ensure code is properly formatted using Prettier with a print width of 80 characters
+Present code in Markdown code blocks with the correct language extension indicated`;
+
+    const systemMessage = { role: "system" as const, content: systemPrompt };
+
+    // 3) Prepend the system message to the rest of the history.
+    return [systemMessage, ...transformedHistory];
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
