@@ -53,6 +53,18 @@ export class AppDB extends Dexie {
       threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id", // <-- ADD forked_from_id
       messages: "++id, supabase_id, thread_supabase_id, createdAt",
     });
+    this.version(5).stores({
+      // No changes to threads
+      threads: "++id, &supabase_id, userId, title, createdAt, updatedAt, forked_from_id",
+      // Remove uniqueness constraint on supabase_id for messages if it was ever there,
+      // and ensure it is properly indexed for lookups.
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    }).upgrade(tx => {
+      // This upgrade is mostly to force a schema reload for users who might have
+      // a bad schema version cached. No actual data modification is needed.
+      console.log("Upgrading database to version 5, ensuring message indexes are correct.");
+      return tx.table("messages").toCollection().first().then(() => {});
+    });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:
     // this.version(1).stores({
