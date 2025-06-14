@@ -215,6 +215,7 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoadingModels, setIsLoadingModels] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [input, setInput] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -225,9 +226,44 @@ export default function ChatPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   // Add scroll to bottom button state
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
+  // Add web search state
+  const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-clear error after 3 seconds
+  useEffect(() => {
+    if (error) {
+      // reset fade state immediately when a new error appears
+      setIsErrorFading(false);
+
+      // first trigger fade after 2.5s
+      const fadeTimer = setTimeout(() => {
+        setIsErrorFading(true);
+      }, 2500);
+
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 3000);
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(timer);
+      };
+    }
+  }, [error]);
+
+  // Helper function to check if current model supports web search
+  const currentModelSupportsWebSearch = () => {
+    return selectedModel === "gemini-2.5-flash-preview-05-20";
+  };
+
+  // Reset web search when switching to a model that doesn't support it
+  React.useEffect(() => {
+    if (!currentModelSupportsWebSearch() && useWebSearch) {
+      setUseWebSearch(false);
+    }
+  }, [selectedModel, useWebSearch]);
 
   // --- MODEL FETCHING ---
   useEffect(() => {
@@ -450,7 +486,11 @@ export default function ChatPage() {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+          body: JSON.stringify({ 
+            model: selectedModel, 
+            messages: historyForAI,
+            useWebSearch: useWebSearch && currentModelSupportsWebSearch()
+          }),
         });
 
         if (!response.body || !response.ok) {
@@ -605,7 +645,11 @@ export default function ChatPage() {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: selectedModel, messages: historyForAI }),
+      body: JSON.stringify({ 
+        model: selectedModel, 
+        messages: historyForAI,
+        useWebSearch: useWebSearch && currentModelSupportsWebSearch()
+      }),
     });
 
     if (!response.body || !response.ok) {
@@ -727,7 +771,11 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelToUse, messages: historyForAI }),
+        body: JSON.stringify({ 
+          model: modelToUse, 
+          messages: historyForAI,
+          useWebSearch: useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20"
+        }),
       });
       if (!response.ok || !response.body) throw new Error("API error");
       const reader = response.body.getReader();
@@ -839,23 +887,7 @@ export default function ChatPage() {
       <div className="header-glass p-6 flex justify-between items-center relative z-10 shrink-0">
         <div className="flex items-center space-x-6">
           <h1 className="text-2xl font-bold text-white">Tweak3 Chat</h1>
-          {/* Model Selector Dropdown Here */}
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-gray-800 text-white p-2 rounded"
-            disabled={isLoadingModels || availableModels.length === 0}
-          >
-            {isLoadingModels && <option value="">Loading models...</option>}
-            {!isLoadingModels && availableModels.length === 0 && (
-              <option value="">No models available</option>
-            )}
-            {availableModels.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.displayName}
-              </option>
-            ))}
-          </select>
+          {/* Removed Model Selector and Web Search Toggle - moved to chatbar */}
         </div>
         {user && (
           <div className="text-white">
@@ -866,7 +898,9 @@ export default function ChatPage() {
 
       {error && (
         <div className="mx-6 mt-4 relative z-10">
-          <div className="bg-red-500/20 border border-red-500/30 backdrop-filter backdrop-blur-md text-red-100 rounded-xl p-4">
+          <div
+            className={`bg-red-500/20 border border-red-500/30 backdrop-filter backdrop-blur-md text-red-100 rounded-xl p-4 transition-opacity duration-500 ${isErrorFading ? 'opacity-0' : 'opacity-100'}`}
+          >
             Error: {error}
           </div>
         </div>
@@ -881,15 +915,6 @@ export default function ChatPage() {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Drag overlay */}
-        {isDragOver && (
-          <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-50 drag-overlay">
-            <div className="text-white text-2xl font-semibold bg-blue-600/80 px-6 py-3 rounded-lg backdrop-blur">
-              Drop file here to attach
-            </div>
-          </div>
-        )}
-
         <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
           {/* Welcome message when no messages */}
           {(!messages || messages.length === 0) && !attachedFile && (
@@ -938,29 +963,177 @@ export default function ChatPage() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({ inline, className, children }: { inline?: boolean; className?: string; children: React.ReactNode }) {
-                          const match = /language-(\w+)/.exec(className || "");
-                          return !inline && match ? (
-                            <div className="my-4">
-                              <SyntaxHighlighter
-                                style={vscDarkPlus as any}
-                                language={match[1]}
-                                PreTag="div"
-                                customStyle={{
-                                  borderRadius: '8px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5',
-                                }}
+                                              code({ inline, className, children }: { inline?: boolean; className?: string; children: React.ReactNode }) {
+                        const match = /language-(\w+)/.exec(className || "");
+                        
+                        const getFileExtension = (language: string): string => {
+                          const extensionMap: { [key: string]: string } = {
+                            javascript: '.js', js: '.js', jsx: '.jsx',
+                            typescript: '.ts', ts: '.ts', tsx: '.tsx',
+                            python: '.py', py: '.py',
+                            java: '.java',
+                            cpp: '.cpp', 'c++': '.cpp', cxx: '.cpp',
+                            c: '.c',
+                            csharp: '.cs', cs: '.cs',
+                            html: '.html', htm: '.html',
+                            css: '.css',
+                            scss: '.scss', sass: '.sass',
+                            json: '.json',
+                            xml: '.xml',
+                            yaml: '.yml', yml: '.yml',
+                            shell: '.sh', bash: '.sh', sh: '.sh',
+                            sql: '.sql',
+                            php: '.php',
+                            ruby: '.rb', rb: '.rb',
+                            go: '.go',
+                            rust: '.rs', rs: '.rs',
+                            swift: '.swift',
+                            kotlin: '.kt',
+                            r: '.r',
+                            matlab: '.m',
+                            perl: '.pl',
+                            lua: '.lua',
+                            dart: '.dart',
+                            scala: '.scala',
+                            clojure: '.clj',
+                            haskell: '.hs',
+                            elm: '.elm',
+                            dockerfile: '.dockerfile',
+                            makefile: '.makefile',
+                            ini: '.ini',
+                            toml: '.toml',
+                            conf: '.conf',
+                            txt: '.txt',
+                            md: '.md', markdown: '.md',
+                          };
+                          return extensionMap[language.toLowerCase()] || '.txt';
+                        };
+
+                        const getLanguageDisplayName = (language: string): string => {
+                          const displayNames: { [key: string]: string } = {
+                            javascript: 'JavaScript', js: 'JavaScript', jsx: 'JavaScript (JSX)',
+                            typescript: 'TypeScript', ts: 'TypeScript', tsx: 'TypeScript (TSX)',
+                            python: 'Python', py: 'Python',
+                            java: 'Java',
+                            cpp: 'C++', 'c++': 'C++', cxx: 'C++',
+                            c: 'C',
+                            csharp: 'C#', cs: 'C#',
+                            html: 'HTML', htm: 'HTML',
+                            css: 'CSS',
+                            scss: 'SCSS', sass: 'Sass',
+                            json: 'JSON',
+                            xml: 'XML',
+                            yaml: 'YAML', yml: 'YAML',
+                            shell: 'Shell', bash: 'Bash', sh: 'Shell',
+                            sql: 'SQL',
+                            php: 'PHP',
+                            ruby: 'Ruby', rb: 'Ruby',
+                            go: 'Go',
+                            rust: 'Rust', rs: 'Rust',
+                            swift: 'Swift',
+                            kotlin: 'Kotlin',
+                            r: 'R',
+                            matlab: 'MATLAB',
+                            perl: 'Perl',
+                            lua: 'Lua',
+                            dart: 'Dart',
+                            scala: 'Scala',
+                            clojure: 'Clojure',
+                            haskell: 'Haskell',
+                            elm: 'Elm',
+                            dockerfile: 'Dockerfile',
+                            makefile: 'Makefile',
+                            ini: 'INI',
+                            toml: 'TOML',
+                            conf: 'Config',
+                            txt: 'Text',
+                            md: 'Markdown', markdown: 'Markdown',
+                          };
+                          return displayNames[language.toLowerCase()] || language.charAt(0).toUpperCase() + language.slice(1);
+                        };
+
+                        const copyToClipboard = async (text: string) => {
+                          try {
+                            await navigator.clipboard.writeText(text);
+                            // You could add a toast notification here if desired
+                          } catch (err) {
+                            console.error('Failed to copy to clipboard:', err);
+                          }
+                        };
+
+                        const downloadCode = (code: string, language: string) => {
+                          const extension = getFileExtension(language);
+                          const blob = new Blob([code], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `code${extension}`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        };
+                        
+                        return !inline && match ? (
+                          <div className="my-4 relative group">
+                            {/* Language label with download functionality */}
+                            <div className="absolute top-2 left-3 z-10">
+                              <button
+                                onClick={() => downloadCode(String(children).replace(/\n$/, ""), match[1])}
+                                className="glass-button-sidebar px-2 py-1 text-xs font-medium text-white/80 hover:text-white rounded-md transition-colors cursor-pointer flex items-center space-x-1 group/download"
+                                title={`Download ${getLanguageDisplayName(match[1])} code`}
                               >
-                                {String(children).replace(/\n$/, "")}
-                              </SyntaxHighlighter>
+                                <span>{getLanguageDisplayName(match[1])}</span>
+                                <svg 
+                                  width="10" 
+                                  height="10" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  strokeWidth="2" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                  className="opacity-0 group-hover/download:opacity-60 transition-opacity"
+                                >
+                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                  <polyline points="7,10 12,15 17,10"/>
+                                  <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                              </button>
                             </div>
-                          ) : (
-                            <code className={`${className || ""} bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}>
-                              {children}
-                            </code>
-                          );
-                        },
+                            {/* Copy button */}
+                            <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                              <button
+                                onClick={() => copyToClipboard(String(children).replace(/\n$/, ""))}
+                                className="glass-button-sidebar p-1.5 text-white/70 hover:text-white rounded-md transition-colors"
+                                title="Copy code"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                              </button>
+                            </div>
+                            <SyntaxHighlighter
+                              style={vscDarkPlus as any}
+                              language={match[1]}
+                              PreTag="div"
+                              customStyle={{
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                lineHeight: '1.5',
+                                paddingTop: '2.5rem', // Add top padding to make room for the language label
+                              }}
+                            >
+                              {String(children).replace(/\n$/, "")}
+                            </SyntaxHighlighter>
+                          </div>
+                        ) : (
+                          <code className={`${className || ""} bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}>
+                            {children}
+                          </code>
+                        );
+                      },
                         p: ({ children }) => (
                           <p className="mb-4 last:mb-0 text-white/90 leading-relaxed">{children}</p>
                         ),
@@ -1083,6 +1256,68 @@ export default function ChatPage() {
         <div className="pt-8 pb-6">
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
             <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-4 shadow-2xl">
+              {/* Model Controls Row */}
+              <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {/* Model Selector */}
+                  <div className="flex items-center space-x-2">
+                    <span className="text-white/70 text-sm font-medium">Model:</span>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
+                      disabled={isLoadingModels || availableModels.length === 0}
+                    >
+                      {isLoadingModels && <option value="" className="bg-gray-800 text-white">Loading models...</option>}
+                      {!isLoadingModels && availableModels.length === 0 && (
+                        <option value="" className="bg-gray-800 text-white">No models available</option>
+                      )}
+                      {availableModels.map((m) => (
+                        <option key={m.value} value={m.value} className="bg-gray-800 text-white">
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Web Search Toggle */}
+                  {currentModelSupportsWebSearch() && (
+                    <div className="flex items-center space-x-3">
+                      <div className="w-px h-6 bg-white/20"></div>
+                      <label className="flex items-center space-x-2 cursor-pointer glass-button-sidebar px-3 py-2 rounded-lg hover:shadow-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={useWebSearch}
+                          onChange={(e) => setUseWebSearch(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-transparent border-2 border-white/40 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                        <span className="text-white text-sm font-medium">Web Search</span>
+                      </label>
+                      <div className="group relative">
+                        <button
+                          type="button"
+                          className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
+                        >
+                          <svg 
+                            className="w-3 h-3 text-gray-400 hover:text-white cursor-help" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M9,9h0a3,3,0,0,1,5.12,2.12h0A3,3,0,0,1,13,14.26V16"/>
+                            <circle cx="12" cy="20" r="1"/>
+                          </svg>
+                        </button>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          Enable real-time web search for current information
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {editingMessage && (
                 <div className="mb-3 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -1098,6 +1333,18 @@ export default function ChatPage() {
                   >
                     Cancel
                   </button>
+                </div>
+              )}
+              {useWebSearch && currentModelSupportsWebSearch() && (
+                <div className="mb-3 p-3 bg-green-600/10 border border-green-500/20 rounded-xl flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <span className="text-green-300 text-sm font-medium">
+                    Web search enabled - responses will include real-time information
+                  </span>
                 </div>
               )}
               {attachedFile && (
