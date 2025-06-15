@@ -2,22 +2,26 @@
 
 import React, { useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        const referrer = document.referrer;
-        const currentOrigin = window.location.origin;
-        // Check if the user came from a chat page within this app
-        if (referrer.startsWith(currentOrigin) && referrer.includes("/chat")) {
-          navigate(-1); // Go back to the specific chat page
+        // Prefer route state passed from Sidebar to know previous path
+        const fromPath = (location.state as any)?.from as string | undefined;
+
+        if (fromPath && fromPath.startsWith("/chat/")) {
+          navigate(fromPath);
+        } else if (fromPath === "/chat") {
+          navigate("/chat");
         } else {
-          navigate("/chat"); // Fallback to the general chat page
+          // If no state available, fall back to history or /chat
+          navigate(-1);
         }
       }
     };
@@ -27,7 +31,7 @@ export default function SettingsPage() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [navigate]);
+  }, [navigate, location.state]);
 
   if (!isLoaded) {
     return (

@@ -29,12 +29,16 @@
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .sidebar-glass {
   background: rgba(31, 41, 55, 0.8);
   backdrop-filter: blur(12px);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .glass-button-sidebar {
