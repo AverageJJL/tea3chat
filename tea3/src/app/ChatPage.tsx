@@ -1294,7 +1294,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
+        <div className="mx-auto max-w-5xl space-y-8 px-4 pb-45">
           {/* Welcome message when no messages */}
           {(!messages || messages.length === 0) &&
             attachedFiles.length === 0 && (
@@ -1314,7 +1314,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               key={m.id}
               className={`group flex ${
                 m.role === "user" ? "justify-end" : "justify-start"
-              } mb-8`}
+              } mb-12`}
             >
               {m.role === "assistant" ? (
                 // Assistant message - no bubble, clean layout
@@ -1330,7 +1330,7 @@ Present code in Markdown code blocks with the correct language extension indicat
                       </div>
                     </div>
                   </div>
-                  <div className="prose prose-invert prose-lg max-w-none text-white/90 leading-relaxed">
+                  <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -1598,22 +1598,22 @@ Present code in Markdown code blocks with the correct language extension indicat
                           );
                         },
                         p: ({ children }) => (
-                          <p className="mb-4 last:mb-0 text-white/90 leading-relaxed">
+                          <p className="mb-4 last:mb-0 text-white/90 leading-relaxed text-lg">
                             {children}
                           </p>
                         ),
                         ul: ({ children }) => (
-                          <ul className="mb-4 space-y-1 text-white/90">
+                          <ul className="mb-4 space-y-1 text-white/90 text-lg">
                             {children}
                           </ul>
                         ),
                         ol: ({ children }) => (
-                          <ol className="mb-4 space-y-1 text-white/90">
+                          <ol className="mb-4 space-y-1 text-white/90 text-lg">
                             {children}
                           </ol>
                         ),
                         li: ({ children }) => (
-                          <li className="text-white/90">{children}</li>
+                          <li className="text-white/90 text-lg">{children}</li>
                         ),
                         h1: ({ children }) => (
                           <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0">
@@ -1631,7 +1631,7 @@ Present code in Markdown code blocks with the correct language extension indicat
                           </h3>
                         ),
                         blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic">
+                          <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic text-lg">
                             {children}
                           </blockquote>
                         ),
@@ -1650,7 +1650,6 @@ Present code in Markdown code blocks with the correct language extension indicat
                           try {
                             await navigator.clipboard.writeText(m.content);
                             setCopiedMessageId(m.id || null);
-                            // Clear the copied state after 2 seconds
                             setTimeout(() => setCopiedMessageId(null), 2000);
                           } catch (err) {
                             console.error("Failed to copy to clipboard:", err);
@@ -1742,16 +1741,50 @@ Present code in Markdown code blocks with the correct language extension indicat
                       <div className="text-white/40 text-xs">
                         {new Date(m.createdAt).toLocaleTimeString()}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleEditMessage(m)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
-                        title="Edit message"
-                      >
-                        <Pencil />
-                      </button>
+                      <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="relative group/copy">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(m.content);
+                                setCopiedMessageId(m.id || null);
+                                setTimeout(() => setCopiedMessageId(null), 2000);
+                              } catch (err) {
+                                console.error("Failed to copy to clipboard:", err);
+                              }
+                            }}
+                            className={`p-1.5 rounded-md transition-all ${
+                              copiedMessageId === m.id
+                                ? "text-green-400 bg-green-500/20"
+                                : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                            }`}
+                          >
+                            {copiedMessageId === m.id ? (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                            )}
+                          </button>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                            {copiedMessageId === m.id ? "Copied!" : "Copy"}
+                          </div>
+                        </div>
+                        <div className="relative group/edit">
+                          <button
+                            type="button"
+                            onClick={() => handleEditMessage(m)}
+                            className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                          >
+                            <Pencil />
+                          </button>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                            Edit
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-white/90 leading-relaxed">
+                    <div className="text-white/90 leading-relaxed text-lg">
                       <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
                     </div>
                     {m.attachments &&
@@ -1784,34 +1817,10 @@ Present code in Markdown code blocks with the correct language extension indicat
         </div>
       </div>
 
-      <div className="absolute bottom-2 left-0 right-0 z-20">
-        {/* Scroll to bottom button */}
-        {showScrollButton && (
-          <div className="flex justify-center mb-4">
-            <button
-              onClick={scrollToBottom}
-              className="bg-gray-800/90 hover:bg-gray-700/90 backdrop-blur-sm border border-gray-600/50 text-white/80 hover:text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 text-sm font-medium"
-              title="Scroll to bottom"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M7 13l3 3 3-3" />
-                <path d="M7 6l3 3 3-3" />
-              </svg>
-              <span>Scroll to bottom</span>
-            </button>
-          </div>
-        )}
-        <div className="pt-8 pb-6">
-          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
+      {/* Chatbar wrapper: flush to bottom on mobile, slight gap on md+ */}
+      <div className="absolute bottom-0 md:bottom-2 left-0 right-0 z-20">
+        <div className="pt-8 pb-0 md:pb-6">
+          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
             <div className="glass-effect backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col">
               {editingMessage && (
                 <div className="mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
@@ -1906,7 +1915,12 @@ Present code in Markdown code blocks with the correct language extension indicat
                       <select
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
-                        className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
+                        /*
+                          Responsive sizing:
+                          - Default (mobile): tighter padding, smaller text, truncate long labels.
+                          - md and up: original spacing / font.
+                        */
+                        className="glass-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
                         disabled={
                           isLoadingModels || availableModels.length === 0
                         }

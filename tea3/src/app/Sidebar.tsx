@@ -96,7 +96,35 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  // Sidebar collapsed / expanded state
+  // Default to collapsed on mobile viewports (< 768px)
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Detect viewport changes so the sidebar behaves responsively.
+  // It collapses automatically on small screens and expands on larger ones
+  // while still allowing the user to toggle it manually.
+  useEffect(() => {
+    const mobileBreakpoint = 768; // Tailwind's `md` breakpoint
+
+    const evaluateCollapse = () => {
+      if (typeof window === "undefined") return; // SSR guard
+      const shouldCollapse = window.innerWidth < mobileBreakpoint;
+      setIsCollapsed((prev) => {
+        // Only update if state actually needs to change to avoid extra renders
+        if (prev !== shouldCollapse) {
+          return shouldCollapse;
+        }
+        return prev;
+      });
+    };
+
+    // Set initial state based on current viewport
+    evaluateCollapse();
+
+    // Update on resize
+    window.addEventListener("resize", evaluateCollapse);
+    return () => window.removeEventListener("resize", evaluateCollapse);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
