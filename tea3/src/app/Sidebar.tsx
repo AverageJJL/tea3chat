@@ -181,9 +181,25 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     }
   };
 
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
+  const toggleSidebar = React.useCallback(() => {
+    setIsCollapsed((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Ctrl+B on Windows/Linux or Cmd+B on macOS
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [toggleSidebar]);
 
   const handleSettingsClick = () => {
     navigate("/settings", { state: { from: location.pathname } });

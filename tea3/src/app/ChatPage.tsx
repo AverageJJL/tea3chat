@@ -10,6 +10,8 @@ import { uploadFileToSupabaseStorage } from "./supabaseStorage";
 import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
@@ -381,9 +383,16 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+  // Add state for copy feedback
+  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+  // Add state for textarea expansion
+  const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
+  const baseTextareaHeightRef = useRef<number>(0);
 
   // Auto-clear error after 3 seconds
   useEffect(() => {
@@ -424,34 +433,31 @@ export default function ChatPage() {
     }
   }, [selectedModel, useWebSearch]);
 
-  // --- MODEL FETCHING ---
-  // useEffect(() => {
-  //   const fetchModels = async () => {
-  //     setIsLoadingModels(true);
-  //     try {
-  //       const response = await fetch("/api/chat"); // Assuming GET on /api/chat lists models
-  //       if (!response.ok) throw new Error("Failed to fetch models");
-  //       const data = await response.json();
-  //       if (data.models && data.models.length > 0) {
-  //         setAvailableModels(data.models);
-  //         // Default to Gemini model, fallback to first model if Gemini not available
-  //         const geminiModel = data.models.find(
-  //           (model: AiModel) =>
-  //             model.value === "gemini-2.5-flash-preview-05-20"
-  //         );
-  //         setSelectedModel(
-  //           geminiModel ? geminiModel.value : data.models[0].value
-  //         );
-  //       }
-  //     } catch (err: any) {
-  //       setError(err.message || "Error loading models.");
-  //       console.error(err);
-  //     } finally {
-  //       setIsLoadingModels(false);
-  //     }
-  //   };
-  //   fetchModels();
-  // }, []);
+  // Establish the baseline (collapsed) height once after mount
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      // After the first render the textarea has 2 rows (collapsed)
+      baseTextareaHeightRef.current = textareaRef.current.scrollHeight;
+    }
+  }, []);
+
+  // Auto-expand / collapse based on the number of lines in the textarea.
+  // This avoids relying on scroll measurements that can be distorted by the
+  // element's "rows" attribute, ensuring it collapses properly when the
+  // content becomes short again.
+  React.useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Count how many logical lines the user has (line breaks + 1)
+    const lineCount = (textarea.value.match(/\n/g) || []).length + 1;
+
+    // Expand when more than 2 lines are present, otherwise collapse
+    const needsExpansion = lineCount > 2;
+
+    // Update state only if it changed to prevent redundant renders
+    setIsTextareaExpanded(prev => (prev !== needsExpansion ? needsExpansion : prev));
+  }, [input]);
 
   // --- DATA FETCHING & SYNC ---
   const messages = useLiveQuery(
@@ -591,14 +597,11 @@ export default function ChatPage() {
 
 If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
 The current date and time including timezone is ${currentTimestamp}.
-Always use LaTeX for mathematical expressions:
+Always use LaTeX for mathematical expressions.
 
-Inline math must be wrapped in escaped parentheses: (content)
-Do not use single dollar signs for inline math
-Display math must be wrapped in double dollar signs: (content)
+For inline math, use a single dollar sign, like $...$. For example, $E = mc^2$.
+For display math, use double dollar signs, like $$...$$. For example, $$\int_{a}^{b} f(x) dx$$.
 
-
-Do not use the backslash character to escape parenthesis. Use the actual parentheses instead.
 Ensure code is properly formatted using Prettier with a print width of 80 characters
 Present code in Markdown code blocks with the correct language extension indicated`;
 
@@ -1316,7 +1319,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               {m.role === "assistant" ? (
                 // Assistant message - no bubble, clean layout
                 <div className="max-w-4xl">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center mb-3">
                     <div className="flex items-center space-x-2">
                       <div className="text-white/80 text-sm font-medium">
                         {availableModels.find((am) => am.value === m.model)
@@ -1326,18 +1329,11 @@ Present code in Markdown code blocks with the correct language extension indicat
                         {new Date(m.createdAt).toLocaleTimeString()}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRegenerate(m)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
-                      title="Regenerate response"
-                    >
-                      <Recycle />
-                    </button>
                   </div>
                   <div className="prose prose-invert prose-lg max-w-none text-white/90 leading-relaxed">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
                       components={{
                         code({
                           inline,
@@ -1644,6 +1640,78 @@ Present code in Markdown code blocks with the correct language extension indicat
                       {m.content}
                     </ReactMarkdown>
                   </div>
+                  
+                  {/* Action buttons at bottom of message */}
+                  <div className="flex items-center justify-start space-x-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="relative group/copy">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(m.content);
+                            setCopiedMessageId(m.id || null);
+                            // Clear the copied state after 2 seconds
+                            setTimeout(() => setCopiedMessageId(null), 2000);
+                          } catch (err) {
+                            console.error("Failed to copy to clipboard:", err);
+                          }
+                        }}
+                        className={`p-1.5 rounded-md transition-all ${
+                          copiedMessageId === m.id
+                            ? "text-green-400 bg-green-500/20"
+                            : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                        }`}
+                      >
+                        {copiedMessageId === m.id ? (
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        ) : (
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        {copiedMessageId === m.id ? "Copied!" : "Copy message"}
+                      </div>
+                    </div>
+                    
+                    <div className="relative group/regen">
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerate(m)}
+                        className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                      >
+                        <Recycle />
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/regen:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        Regenerate response
+                      </div>
+                    </div>
+                  </div>
+
                   {m.attachments &&
                     m.attachments.map((att, index) => (
                       <div key={index} className="mt-4">
@@ -1764,13 +1832,14 @@ Present code in Markdown code blocks with the correct language extension indicat
               )}
 
               <textarea
+                ref={textareaRef}
                 className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
                 value={input}
                 placeholder="Ask anything..."
                 onChange={(e) => setInput(e.target.value)}
                 disabled={isSending}
-                rows={1}
-                style={{ minHeight: "2.5rem", maxHeight: "8rem" }}
+                rows={isTextareaExpanded ? 4 : 2}
+                style={{ minHeight: isTextareaExpanded ? "4rem" : "2.5rem", maxHeight: "8rem" }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
