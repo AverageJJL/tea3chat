@@ -1,3 +1,4 @@
+// app\api\sync\route.ts
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient, SupabaseClientOptions } from '@supabase/supabase-js';
