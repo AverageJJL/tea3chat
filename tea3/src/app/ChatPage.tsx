@@ -94,6 +94,7 @@ interface SupabaseThread {
   messages: SupabaseMessage[];
 }
 
+
 async function syncEditOperationToBackend(payload: {
   threadSupabaseId: string;
   messagesToUpsert: Message[];
@@ -266,30 +267,6 @@ async function fetchAndStoreCloudData() {
     }
   } catch (error) {
     // console.error("Failed to fetch or store cloud data:", error);
-  }
-}
-
-// Add this helper function inside ChatPage.tsx
-async function syncMessagesToBackend(messages: Message[]): Promise<any> {
-  try {
-    const response = await fetch("/api/sync/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.error || `Failed to sync messages: ${response.statusText}`
-      );
-    }
-
-    const result = await response.json();
-    return result.data;
-  } catch (error) {
-    console.error("Failed to sync messages to backend:", error);
-    throw error;
   }
 }
 
