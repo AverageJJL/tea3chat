@@ -1,7 +1,7 @@
 // ChatPage.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -314,7 +314,6 @@ async function syncThreadWithAttachments(supabaseThreadId: string) {
     .equals(supabaseThreadId)
     .toArray();
 
-  // ** THE FIX IS HERE **
   // Create the payload for attachments by iterating through the messages
   const attachmentsData: {
     localMessageId: number;
@@ -357,6 +356,8 @@ interface ChatPageContext {
   modelsError: string | null;
 }
 
+// -------------------------
+// Memoized list of messages
 export default function ChatPage() {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
@@ -391,6 +392,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Throttle scroll handler using rAF
+  const scrollRafRef = useRef<number | null>(null);
   // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
   const baseTextareaHeightRef = useRef<number>(0);
 
@@ -496,21 +499,22 @@ export default function ChatPage() {
 
   // Handle scroll events to control visibility of the "scroll to bottom" button
   const handleScroll = React.useCallback(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    const isScrollable = scrollHeight > clientHeight;
-
-    // Show button when the user is more than 200px away from the bottom
-    setShowScrollButton(distanceFromBottom > 200 && isScrollable);
+    if (scrollRafRef.current !== null) return; // already scheduled
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const scrollContainer = scrollContainerRef.current;
+      if (scrollContainer) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const isScrollable = scrollHeight > clientHeight;
+        setShowScrollButton(distanceFromBottom > 200 && isScrollable);
+      }
+      scrollRafRef.current = null;
+    });
   }, []);
 
-  // Re-evaluate button visibility whenever messages change (e.g., new message appended)
+  // Re-check button visibility whenever the messages array changes (e.g. new streaming chunks)
   useEffect(() => {
-    // Run in next tick to ensure DOM has rendered any new content
-    const id = setTimeout(handleScroll, 50);
+    const id = setTimeout(handleScroll, 50); // delay to allow DOM paint
     return () => clearTimeout(id);
   }, [messages, handleScroll]);
 
@@ -1046,7 +1050,7 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
 
   // --- HELPER FUNCTIONS for message editing, file handling ---
-  const handleEditMessage = (msg: Message) => {
+  const handleEditMessage = React.useCallback((msg: Message) => {
     setEditingMessage(msg);
     setInput(msg.content);
     setAttachedFiles([]);
@@ -1054,7 +1058,7 @@ Present code in Markdown code blocks with the correct language extension indicat
     if (fileInputRef.current) fileInputRef.current.value = "";
     // Consider scrolling to the input area or the message being edited
     // messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   const handleCancelEdit = () => {
     setEditingMessage(null);
@@ -1081,7 +1085,7 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
   // --- END HELPER FUNCTIONS ---
 
-  const handleRegenerate = async (msg: Message) => {
+  const handleRegenerate = React.useCallback(async (msg: Message) => {
     if (!messages || !msg.id || isSending) return;
     const index = messages.findIndex((m) => m.id === msg.id);
     if (index === -1) return;
@@ -1184,7 +1188,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         }
       }
     }
-  }; // End of handleRegenerate
+  }, [messages, selectedModel, availableModels, useWebSearch, isSending]); // End of handleRegenerate
 
   // Helper function to process a File object (used by both file input and drag&drop)
   const processFiles = (files: File[]) => {
