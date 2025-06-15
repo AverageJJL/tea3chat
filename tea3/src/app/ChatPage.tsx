@@ -100,11 +100,24 @@ async function syncEditOperationToBackend(payload: {
   idsToDelete: string[];
 }): Promise<any> {
   try {
+    // --- Safeguard against missing supabase_id ---
+    // Ensure every message being upserted has a valid UUID.
+    const sanitizedMessages = payload.messagesToUpsert.map(msg => {
+      if (!msg.supabase_id) {
+        console.warn("Found message without supabase_id during sync, generating new one.", msg);
+        return { ...msg, supabase_id: uuidv4() };
+      }
+      return msg;
+    });
+
     const response = await fetch("/api/sync/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Send the new, more detailed payload
-      body: JSON.stringify(payload),
+      // Send the new, more detailed payload with sanitized messages
+      body: JSON.stringify({
+        ...payload,
+        messagesToUpsert: sanitizedMessages
+      }),
     });
 
     if (!response.ok) {
@@ -1302,14 +1315,9 @@ Present code in Markdown code blocks with the correct language extension indicat
             >
               {m.role === "assistant" ? (
                 // Assistant message - no bubble, clean layout
-                <div className="max-w-4xl w-full">
+                <div className="max-w-4xl">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
-                        <span className="text-white text-sm font-semibold">
-                          AI
-                        </span>
-                      </div>
                       <div className="text-white/80 text-sm font-medium">
                         {availableModels.find((am) => am.value === m.model)
                           ?.displayName || m.model}
@@ -1659,49 +1667,46 @@ Present code in Markdown code blocks with the correct language extension indicat
                     ))}
                 </div>
               ) : (
-                // User message - keep bubble styling
-                <div className="max-w-xl">
-                  <div className="bg-blue-600 text-white rounded-2xl px-4 py-3 shadow-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="font-medium text-sm text-blue-100">
-                        You
+                // User message - glass aesthetic styling
+                <div className="max-w-4xl">
+                  <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="text-white/40 text-xs">
+                        {new Date(m.createdAt).toLocaleTimeString()}
                       </div>
                       <button
                         type="button"
                         onClick={() => handleEditMessage(m)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-200 hover:text-white hover:bg-blue-500/30 rounded"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
                         title="Edit message"
                       >
                         <Pencil />
                       </button>
                     </div>
-                    <div className="text-white leading-relaxed">
+                    <div className="text-white/90 leading-relaxed">
                       <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
                     </div>
                     {m.attachments &&
                       m.attachments.map((att, index) => (
-                        <div key={index} className="mt-3">
+                        <div key={index} className="mt-4">
                           {att.file_url.startsWith("data:image") ? (
                             <img
                               src={att.file_url}
                               alt={att.file_name}
-                              className="max-w-xs rounded-lg"
+                              className="max-w-md rounded-lg shadow-lg"
                             />
                           ) : (
                             <a
                               href={att.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-200 hover:text-white hover:underline"
+                              className="inline-flex items-center space-x-2 text-blue-400 hover:text-blue-300 hover:underline"
                             >
-                              {att.file_name}
+                              <span>{att.file_name}</span>
                             </a>
                           )}
                         </div>
                       ))}
-                    <div className="text-xs text-blue-200/70 mt-2">
-                      {new Date(m.createdAt).toLocaleTimeString()}
-                    </div>
                   </div>
                 </div>
               )}
@@ -1711,7 +1716,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-20">
+      <div className="absolute bottom-2 left-0 right-0 z-20">
         {/* Scroll to bottom button */}
         {showScrollButton && (
           <div className="flex justify-center mb-4">
