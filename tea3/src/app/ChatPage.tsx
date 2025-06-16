@@ -583,6 +583,8 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+  // Add deep research state
+  const [useDeepResearch, setUseDeepResearch] = useState<boolean>(false);
   // Add state for textarea expansion
   const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -595,6 +597,22 @@ export default function ChatPage() {
   const baseTextareaHeightRef = useRef<number>(0);
 
   const isSubmittingRef = useRef(false);
+
+  const handleWebSearchToggle = () => {
+    const isEnabling = !useWebSearch;
+    setUseWebSearch(isEnabling);
+    if (isEnabling) {
+      setUseDeepResearch(false);
+    }
+  };
+
+  const handleDeepResearchToggle = () => {
+    const isEnabling = !useDeepResearch;
+    setUseDeepResearch(isEnabling);
+    if (isEnabling) {
+      setUseWebSearch(false);
+    }
+  };
 
   // Auto-clear error after 3 seconds
   useEffect(() => {
@@ -913,6 +931,8 @@ Present code in Markdown code blocks with the correct language extension indicat
       return;
     }
 
+    const modelForResponse = useDeepResearch ? "Sonar Deep Research" : selectedModel;
+
     const modelSupportsImages =
       selectedModel === "meta-llama/llama-4-maverick:free" ||
       selectedModel === "gemini-2.5-flash-preview-05-20";
@@ -990,7 +1010,7 @@ Present code in Markdown code blocks with the correct language extension indicat
             // It keeps its original `id` and `supabase_id`.
             await db.messages.update(assistantMessageToUpdate.id, {
               content: "",
-              model: selectedModel, // Also update the model used
+              model: modelForResponse, // Also update the model used
             });
           } else {
             // Create a new placeholder for the assistant's response.
@@ -1000,7 +1020,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               role: "assistant",
               content: "",
               createdAt: new Date(),
-              model: selectedModel,
+              model: modelForResponse,
             };
             assistantMessageToUpdate = await db.messages.add(
               assistantMessageData
@@ -1025,9 +1045,11 @@ Present code in Markdown code blocks with the correct language extension indicat
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: selectedModel,
+              model: modelForResponse,
               messages: historyForAI,
               useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
+              useDeepResearch,
+              assistantMessageId: assistantMessageToUpdate.supabase_id,
             }),
           });
 
@@ -1216,7 +1238,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         role: "assistant",
         content: "",
         createdAt: new Date(),
-        model: selectedModel,
+        model: modelForResponse,
       };
       assistantMessageSupabaseId = assistantMessageData.supabase_id!;
       assistantLocalMessageId = await db.messages.add(assistantMessageData);
@@ -1249,9 +1271,10 @@ Present code in Markdown code blocks with the correct language extension indicat
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: selectedModel,
+          model: modelForResponse,
           messages: historyForAI,
           useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
+          useDeepResearch,
           assistantMessageId: assistantMessageSupabaseId,
         }),
       });
@@ -1406,9 +1429,11 @@ Present code in Markdown code blocks with the correct language extension indicat
    
 
     setIsSending(true);
+
+    const modelForRegeneration = useDeepResearch ? 'Sonar Deep Research' : (msg.model || selectedModel);
     // Ensure msg.id is valid before updating
     if (msg.id) {
-      await db.messages.update(msg.id, { content: "" });
+      await db.messages.update(msg.id, { content: "", model: modelForRegeneration });
     }
 
     let regenerationStreamId = msg.supabase_id;
@@ -1426,10 +1451,11 @@ Present code in Markdown code blocks with the correct language extension indicat
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: modelToUse,
+          model: modelForRegeneration,
           messages: historyForAI,
           useWebSearch:
             useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
+          useDeepResearch,
           assistantMessageId: regenerationStreamId,
           }),
       });
@@ -1797,7 +1823,7 @@ Present code in Markdown code blocks with the correct language extension indicat
                         <div className="group relative">
                           <button
                             type="button"
-                            onClick={() => setUseWebSearch(!useWebSearch)}
+                            onClick={handleWebSearchToggle}
                             className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
                               useWebSearch
                                 ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
@@ -1829,6 +1855,46 @@ Present code in Markdown code blocks with the correct language extension indicat
                         </div>
                       </div>
                     )}
+
+                    {/* Deep Research Toggle */}
+                    <div className="flex items-center space-x-3">
+                      <div className="group relative">
+                        <button
+                          type="button"
+                          onClick={handleDeepResearchToggle}
+                          className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                            useDeepResearch
+                              ? "bg-purple-600/20 text-purple-400 border border-purple-500/30"
+                              : "glass-button-sidebar text-white/70 hover:text-white"
+                          }`}
+                          title={
+                            useDeepResearch
+                              ? "Disable deep research"
+                              : "Enable deep research"
+                          }
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            <line x1="11" y1="8" x2="11" y2="14" />
+                            <line x1="8" y1="11" x2="14" y2="11" />
+                          </svg>
+                        </button>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          {useDeepResearch
+                            ? "Disable deep research"
+                            : "Enable Perplexity Sonar deep research"}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
