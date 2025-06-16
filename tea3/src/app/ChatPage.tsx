@@ -934,18 +934,22 @@ Present code in Markdown code blocks with the correct language extension indicat
         currentSupabaseThreadId = newThreadSupabaseId;
         navigate(`/chat/${newThreadSupabaseId}`, { replace: true });
       } else {
-        // If it's the first message in an existing but empty thread, update the title.
+        // For an existing thread, always update the `updatedAt` timestamp.
+        const modifications: Partial<Thread> = { updatedAt: new Date() };
+
+        // If it's the first message in an existing but empty thread, also update the title.
         const messagesInThread = await db.messages
           .where("thread_supabase_id")
           .equals(currentSupabaseThreadId)
           .count();
         if (messagesInThread === 0) {
-          const title =
+          modifications.title =
             (await generateTitleFromPrompt(input, 50)) || "New Chat";
-          await db.threads
-            .where({ supabase_id: currentSupabaseThreadId })
-            .modify({ title: title, updatedAt: new Date() });
         }
+        
+        await db.threads
+            .where({ supabase_id: currentSupabaseThreadId })
+            .modify(modifications);
       }
 
       // File Upload Logic
@@ -1796,53 +1800,6 @@ Present code in Markdown code blocks with the correct language extension indicat
                 // User message - glass aesthetic styling
                 <div className="max-w-4xl">
                   <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="text-white/40 text-xs">
-                        {new Date(m.createdAt).toLocaleTimeString()}
-                      </div>
-                      <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="relative group/copy">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(m.content);
-                                setCopiedMessageId(m.id || null);
-                                setTimeout(() => setCopiedMessageId(null), 2000);
-                              } catch (err) {
-                                console.error("Failed to copy to clipboard:", err);
-                              }
-                            }}
-                            className={`p-1.5 rounded-md transition-all ${
-                              copiedMessageId === m.id
-                                ? "text-green-400 bg-green-500/20"
-                                : "text-white/50 hover:text-white/80 hover:bg-white/10"
-                            }`}
-                          >
-                            {copiedMessageId === m.id ? (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                            ) : (
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                            )}
-                          </button>
-                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                            {copiedMessageId === m.id ? "Copied!" : "Copy"}
-                          </div>
-                        </div>
-                        <div className="relative group/edit">
-                          <button
-                            type="button"
-                            onClick={() => handleEditMessage(m)}
-                            className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
-                          >
-                            <Pencil />
-                          </button>
-                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                            Edit
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                     <div className="text-white/90 leading-relaxed text-lg">
                       <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
                     </div>
@@ -1867,6 +1824,49 @@ Present code in Markdown code blocks with the correct language extension indicat
                           )}
                         </div>
                       ))}
+                  </div>
+                  {/* Action buttons for user message */}
+                  <div className="flex items-center justify-end space-x-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="relative group/copy">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(m.content);
+                            setCopiedMessageId(m.id || null);
+                            setTimeout(() => setCopiedMessageId(null), 2000);
+                          } catch (err) {
+                            console.error("Failed to copy to clipboard:", err);
+                          }
+                        }}
+                        className={`p-1.5 rounded-md transition-all ${
+                          copiedMessageId === m.id
+                            ? "text-green-400 bg-green-500/20"
+                            : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                        }`}
+                      >
+                        {copiedMessageId === m.id ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                        )}
+                      </button>
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        {copiedMessageId === m.id ? "Copied!" : "Copy"}
+                      </div>
+                    </div>
+                    <div className="relative group/edit">
+                      <button
+                        type="button"
+                        onClick={() => handleEditMessage(m)}
+                        className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                      >
+                        <Pencil />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        Edit
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
