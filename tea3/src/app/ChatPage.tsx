@@ -342,6 +342,139 @@ interface ChatPageContext {
   modelsError: string | null;
 }
 
+// After the SVG icon definitions and before helper/service code, add memoized MessageRow component
+const MessageRow = React.memo(
+  function MessageRow({
+    message,
+    availableModels,
+    onEdit,
+    onRegenerate,
+  }: {
+    message: Message;
+    availableModels: { value: string; displayName: string }[];
+    onEdit: (m: Message) => void;
+    onRegenerate: (m: Message) => void;
+  }) {
+    // No hover state; CSS handles visibility via group-hover
+
+    // Callbacks are stable via useCallback
+    const handleCopy = React.useCallback(() => {
+      navigator.clipboard
+        .writeText(message.content)
+        .then(() => {
+          setIsCopied(true);
+          setTimeout(() => setIsCopied(false), 2000);
+        })
+        .catch((err) => console.error("Failed to copy", err));
+    }, [message.content]);
+
+    // Determine role
+    const isAssistant = message.role === "assistant";
+
+    // Memoise heavy Markdown render
+    const markdownBody = React.useMemo(() => {
+      if (!isAssistant) return null;
+      return (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
+          {message.content}
+        </ReactMarkdown>
+      );
+    }, [isAssistant, message.content]);
+
+    const [isCopied, setIsCopied] = React.useState(false);
+
+    return (
+      <div
+        className={`group flex ${
+          message.role === "user" ? "justify-end" : "justify-start"
+        } mb-12`}
+      >
+        {isAssistant ? (
+          <div className="max-w-4xl relative pb-8">
+            {/* Header: model name + timestamp */}
+            <div className="flex items-center mb-3">
+              <div className="flex items-center space-x-2">
+                <div className="text-white/80 text-sm font-medium">
+                  {availableModels.find((am) => am.value === message.model)
+                    ?.displayName || message.model}
+                </div>
+                <div className="text-white/40 text-xs">
+                  {new Date(message.createdAt).toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+            {/* Markdown body */}
+            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
+              {markdownBody}
+            </div>
+            {/* Action buttons; visible on hover via CSS */}
+            <div className="absolute bottom-0 left-0 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={`p-1.5 rounded-md transition-all ${
+                  isCopied ? "text-green-400 bg-green-500/20" : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                }`}
+              >
+                {isCopied ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRegenerate(message)}
+                className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+              >
+                <Recycle />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-4xl relative pb-8">
+            <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
+              <div className="text-white/90 leading-relaxed text-lg">
+                <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
+              </div>
+            </div>
+            {/* User message buttons */}
+            <div className="absolute bottom-0 right-0 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={`p-1.5 rounded-md transition-all ${
+                  isCopied ? "text-green-400 bg-green-500/20" : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                }`}
+              >
+                {isCopied ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onEdit(message)}
+                className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+              >
+                <Pencil />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.message.content === next.message.content &&
+    prev.message.attachments?.length === next.message.attachments?.length &&
+    prev.message.model === next.message.model
+);
+
 // -------------------------
 // Memoized list of messages
 export default function ChatPage() {
@@ -371,10 +504,6 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
-  // Add state for copy feedback
-  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
-  // Track which message row is currently hovered so we can conditionally render action buttons
-  const [hoveredMessageId, setHoveredMessageId] = useState<number | null>(null);
   // Add state for textarea expansion
   const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1128,6 +1257,29 @@ Present code in Markdown code blocks with the correct language extension indicat
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Add Escape key listener to exit edit mode
+  React.useEffect(() => {
+    if (!editingMessage) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleCancelEdit();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editingMessage]);
+
+  // Exit edit mode when switching chat threads
+  React.useEffect(() => {
+    if (editingMessage) {
+      handleCancelEdit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseThreadId]);
+
   const removeAttachedFile = (indexToRemove: number) => {
     setAttachedFiles((files) =>
       files.filter((_, index) => index !== indexToRemove)
@@ -1384,510 +1536,13 @@ Present code in Markdown code blocks with the correct language extension indicat
             )}
 
           {messages?.map((m) => (
-            <div
+            <MessageRow
               key={m.id}
-              className={`group flex ${
-                m.role === "user" ? "justify-end" : "justify-start"
-              } mb-12`}
-              onMouseEnter={() => setHoveredMessageId(m.id ?? null)}
-              onMouseLeave={() => setHoveredMessageId((prev) => (prev === m.id ? null : prev))}
-            >
-              {m.role === "assistant" ? (
-                // Assistant message - no bubble, clean layout
-                <div className="max-w-4xl relative pb-8">
-                  <div className="flex items-center mb-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="text-white/80 text-sm font-medium">
-                        {availableModels.find((am) => am.value === m.model)
-                          ?.displayName || m.model}
-                      </div>
-                      <div className="text-white/40 text-xs">
-                        {new Date(m.createdAt).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      components={{
-                        code({
-                          inline,
-                          className,
-                          children,
-                        }: {
-                          inline?: boolean;
-                          className?: string;
-                          children: React.ReactNode;
-                        }) {
-                          const match = /language-(\w+)/.exec(className || "");
-
-                          const getFileExtension = (
-                            language: string
-                          ): string => {
-                            const extensionMap: { [key: string]: string } = {
-                              javascript: ".js",
-                              js: ".js",
-                              jsx: ".jsx",
-                              typescript: ".ts",
-                              ts: ".ts",
-                              tsx: ".tsx",
-                              python: ".py",
-                              py: ".py",
-                              java: ".java",
-                              cpp: ".cpp",
-                              "c++": ".cpp",
-                              cxx: ".cpp",
-                              c: ".c",
-                              csharp: ".cs",
-                              cs: ".cs",
-                              html: ".html",
-                              htm: ".html",
-                              css: ".css",
-                              scss: ".scss",
-                              sass: ".sass",
-                              json: ".json",
-                              xml: ".xml",
-                              yaml: ".yml",
-                              yml: ".yml",
-                              shell: ".sh",
-                              bash: ".sh",
-                              sh: ".sh",
-                              sql: ".sql",
-                              php: ".php",
-                              ruby: ".rb",
-                              rb: ".rb",
-                              go: ".go",
-                              rust: ".rs",
-                              rs: ".rs",
-                              swift: ".swift",
-                              kotlin: ".kt",
-                              r: ".r",
-                              matlab: ".m",
-                              perl: ".pl",
-                              lua: ".lua",
-                              dart: ".dart",
-                              scala: ".scala",
-                              clojure: ".clj",
-                              haskell: ".hs",
-                              elm: ".elm",
-                              dockerfile: ".dockerfile",
-                              makefile: ".makefile",
-                              ini: ".ini",
-                              toml: ".toml",
-                              conf: ".conf",
-                              txt: ".txt",
-                              md: ".md",
-                              markdown: ".md",
-                            };
-                            return (
-                              extensionMap[language.toLowerCase()] || ".txt"
-                            );
-                          };
-
-                          const getLanguageDisplayName = (
-                            language: string
-                          ): string => {
-                            const displayNames: { [key: string]: string } = {
-                              javascript: "JavaScript",
-                              js: "JavaScript",
-                              jsx: "JavaScript (JSX)",
-                              typescript: "TypeScript",
-                              ts: "TypeScript",
-                              tsx: "TypeScript (TSX)",
-                              python: "Python",
-                              py: "Python",
-                              java: "Java",
-                              cpp: "C++",
-                              "c++": "C++",
-                              cxx: "C++",
-                              c: "C",
-                              csharp: "C#",
-                              cs: "C#",
-                              html: "HTML",
-                              htm: "HTML",
-                              css: "CSS",
-                              scss: "SCSS",
-                              sass: "Sass",
-                              json: "JSON",
-                              xml: "XML",
-                              yaml: "YAML",
-                              yml: "YAML",
-                              shell: "Shell",
-                              bash: "Bash",
-                              sh: "Shell",
-                              sql: "SQL",
-                              php: "PHP",
-                              ruby: "Ruby",
-                              rb: "Ruby",
-                              go: "Go",
-                              rust: "Rust",
-                              rs: "Rust",
-                              swift: "Swift",
-                              kotlin: "Kotlin",
-                              r: "R",
-                              matlab: "MATLAB",
-                              perl: "Perl",
-                              lua: "Lua",
-                              dart: "Dart",
-                              scala: "Scala",
-                              clojure: "Clojure",
-                              haskell: "Haskell",
-                              elm: "Elm",
-                              dockerfile: "Dockerfile",
-                              makefile: "Makefile",
-                              ini: "INI",
-                              toml: "TOML",
-                              conf: "Config",
-                              txt: "Text",
-                              md: "Markdown",
-                              markdown: "Markdown",
-                            };
-                            return (
-                              displayNames[language.toLowerCase()] ||
-                              language.charAt(0).toUpperCase() +
-                                language.slice(1)
-                            );
-                          };
-
-                          const copyToClipboard = async (text: string) => {
-                            try {
-                              await navigator.clipboard.writeText(text);
-                              // You could add a toast notification here if desired
-                            } catch (err) {
-                              console.error(
-                                "Failed to copy to clipboard:",
-                                err
-                              );
-                            }
-                          };
-
-                          const downloadCode = (
-                            code: string,
-                            language: string
-                          ) => {
-                            const extension = getFileExtension(language);
-                            const blob = new Blob([code], {
-                              type: "text/plain",
-                            });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = `code${extension}`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                          };
-
-                          return !inline && match ? (
-                            <div className="my-4 relative group">
-                              {/* Language label with download functionality */}
-                              <div className="absolute top-2 left-3 z-10">
-                                <button
-                                  onClick={() =>
-                                    downloadCode(
-                                      String(children).replace(/\n$/, ""),
-                                      match[1]
-                                    )
-                                  }
-                                  className="glass-button-sidebar px-2 py-1 text-xs font-medium text-white/80 hover:text-white rounded-md transition-colors cursor-pointer flex items-center space-x-1 group/download"
-                                  title={`Download ${getLanguageDisplayName(
-                                    match[1]
-                                  )} code`}
-                                >
-                                  <span>
-                                    {getLanguageDisplayName(match[1])}
-                                  </span>
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="opacity-0 group-hover/download:opacity-60 transition-opacity"
-                                  >
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="7,10 12,15 17,10" />
-                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                  </svg>
-                                </button>
-                              </div>
-                              {/* Copy button */}
-                              <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                <button
-                                  onClick={() =>
-                                    copyToClipboard(
-                                      String(children).replace(/\n$/, "")
-                                    )
-                                  }
-                                  className="glass-button-sidebar p-1.5 text-white/70 hover:text-white rounded-md transition-colors"
-                                  title="Copy code"
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <rect
-                                      x="9"
-                                      y="9"
-                                      width="13"
-                                      height="13"
-                                      rx="2"
-                                      ry="2"
-                                    />
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                  </svg>
-                                </button>
-                              </div>
-                              <SyntaxHighlighter
-                                style={vscDarkPlus as any}
-                                language={match[1]}
-                                PreTag="div"
-                                customStyle={{
-                                  borderRadius: "8px",
-                                  fontSize: "14px",
-                                  lineHeight: "1.5",
-                                  paddingTop: "2.5rem", // Add top padding to make room for the language label
-                                }}
-                              >
-                                {String(children).replace(/\n$/, "")}
-                              </SyntaxHighlighter>
-                            </div>
-                          ) : (
-                            <code
-                              className={`${
-                                className || ""
-                              } bg-gray-800/60 text-blue-300 rounded px-1.5 py-0.5 font-mono text-sm`}
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
-                        p: ({ children }) => (
-                          <p className="mb-4 last:mb-0 text-white/90 leading-relaxed text-lg">
-                            {children}
-                          </p>
-                        ),
-                        ul: ({ children }) => (
-                          <ul className="mb-4 space-y-1 text-white/90 text-lg">
-                            {children}
-                          </ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="mb-4 space-y-1 text-white/90 text-lg">
-                            {children}
-                          </ol>
-                        ),
-                        li: ({ children }) => (
-                          <li className="text-white/90 text-lg">{children}</li>
-                        ),
-                        h1: ({ children }) => (
-                          <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0">
-                            {children}
-                          </h1>
-                        ),
-                        h2: ({ children }) => (
-                          <h2 className="text-xl font-semibold text-white mb-3 mt-5 first:mt-0">
-                            {children}
-                          </h2>
-                        ),
-                        h3: ({ children }) => (
-                          <h3 className="text-lg font-semibold text-white mb-2 mt-4 first:mt-0">
-                            {children}
-                          </h3>
-                        ),
-                        blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic text-lg">
-                            {children}
-                          </blockquote>
-                        ),
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
-                  
-                  {/* Action buttons at bottom of message */}
-                  {hoveredMessageId === m.id && (
-                    <div className="absolute bottom-0 left-0 flex items-center space-x-2">
-                      <div className="relative group/copy">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(m.content);
-                              setCopiedMessageId(m.id || null);
-                              setTimeout(() => setCopiedMessageId(null), 2000);
-                            } catch (err) {
-                              console.error("Failed to copy to clipboard:", err);
-                            }
-                          }}
-                          className={`p-1.5 rounded-md transition-all ${
-                            copiedMessageId === m.id
-                              ? "text-green-400 bg-green-500/20"
-                              : "text-white/50 hover:text-white/80 hover:bg-white/10"
-                          }`}
-                        >
-                          {copiedMessageId === m.id ? (
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M20 6L9 17l-5-5" />
-                            </svg>
-                          ) : (
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          {copiedMessageId === m.id ? "Copied!" : "Copy message"}
-                        </div>
-                      </div>
-                      
-                      <div className="relative group/regen">
-                        <button
-                          type="button"
-                          onClick={() => handleRegenerate(m)}
-                          className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
-                        >
-                          <Recycle />
-                        </button>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/regen:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          Regenerate response
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {m.attachments &&
-                    m.attachments.map((att, index) => (
-                      <div key={index} className="mt-4">
-                        {att.file_url.startsWith("data:image") ? (
-                          <img
-                            src={att.file_url}
-                            alt={att.file_name}
-                            className="max-w-md rounded-lg shadow-lg"
-                          />
-                        ) : (
-                          <a
-                            href={att.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center space-x-2 text-blue-400 hover:text-blue-300 hover:underline"
-                          >
-                            <span>{att.file_name}</span>
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                // User message - glass aesthetic styling
-                <div className="max-w-4xl relative pb-8">
-                  <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
-                    <div className="text-white/90 leading-relaxed text-lg">
-                      <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
-                    </div>
-                    {m.attachments &&
-                      m.attachments.map((att, index) => (
-                        <div key={index} className="mt-4">
-                          {att.file_url.startsWith("data:image") ? (
-                            <img
-                              src={att.file_url}
-                              alt={att.file_name}
-                              className="max-w-md rounded-lg shadow-lg"
-                            />
-                          ) : (
-                            <a
-                              href={att.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-2 text-blue-400 hover:text-blue-300 hover:underline"
-                            >
-                              <span>{att.file_name}</span>
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                  {/* Action buttons for user message */}
-                  {hoveredMessageId === m.id && (
-                    <div className="absolute bottom-0 right-0 flex items-center space-x-2">
-                      <div className="relative group/copy">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(m.content);
-                              setCopiedMessageId(m.id || null);
-                              setTimeout(() => setCopiedMessageId(null), 2000);
-                            } catch (err) {
-                              console.error("Failed to copy to clipboard:", err);
-                            }
-                          }}
-                          className={`p-1.5 rounded-md transition-all ${
-                            copiedMessageId === m.id
-                              ? "text-green-400 bg-green-500/20"
-                              : "text-white/50 hover:text-white/80 hover:bg-white/10"
-                          }`}
-                        >
-                          {copiedMessageId === m.id ? (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                          ) : (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                          )}
-                        </button>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          {copiedMessageId === m.id ? "Copied!" : "Copy"}
-                        </div>
-                      </div>
-                      <div className="relative group/edit">
-                        <button
-                          type="button"
-                          onClick={() => handleEditMessage(m)}
-                          className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
-                        >
-                          <Pencil />
-                        </button>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          Edit
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              message={m}
+              availableModels={availableModels}
+              onEdit={handleEditMessage}
+              onRegenerate={handleRegenerate}
+            />
           ))}
           <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
         </div>
@@ -1895,6 +1550,31 @@ Present code in Markdown code blocks with the correct language extension indicat
 
       {/* Chatbar wrapper: flush to bottom on mobile, slight gap on md+ */}
       <div className="absolute bottom-0 md:bottom-2 left-0 right-0 z-20">
+        {/* Scroll to bottom button - positioned above chatbar */}
+        {showScrollButton && (
+          <div className="flex justify-center mb-3">
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="glass-effect backdrop-blur-xl px-4 py-2 rounded-xl text-white/80 hover:text-white text-sm font-medium transition-colors shadow-lg flex items-center space-x-2"
+              title="Scroll to bottom"
+            >
+              <span>Scroll to bottom</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </div>
+        )}
         <div className="pt-8 pb-0 md:pb-6">
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
             <div className="glass-effect backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col">
@@ -1929,6 +1609,9 @@ Present code in Markdown code blocks with the correct language extension indicat
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleSubmit(e as any);
+                  } else if (e.key === "Escape" && editingMessage) {
+                    e.preventDefault();
+                    handleCancelEdit();
                   }
                 }}
               />
