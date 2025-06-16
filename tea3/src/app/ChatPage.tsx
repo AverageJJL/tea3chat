@@ -289,7 +289,6 @@ async function syncThreadWithAttachments(supabaseThreadId: string) {
     .equals(supabaseThreadId)
     .toArray();
 
-  // ** THE FIX IS HERE **
   // Create the payload for attachments by iterating through the messages
   const attachmentsData: {
     localMessageId: number;
@@ -347,6 +346,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
+  const [isResuming, setIsResuming] = useState<boolean>(false);
   const [input, setInput] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [attachedPreviews, setAttachedPreviews] = useState<string[]>([]);
@@ -505,10 +505,106 @@ export default function ChatPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const resumeStream = async (assistantMessageId: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(
+      `[${timestamp}] [FE] Starting resumeStream for ID: ${assistantMessageId}`
+    );
+    setIsResuming(true);
+    setIsSending(true); // Block user input
+
+    const messageToResume = await db.messages
+      .where("supabase_id")
+      .equals(assistantMessageId)
+      .first();
+
+    if (!messageToResume || !messageToResume.id) {
+      console.error(
+        `[${timestamp}] [FE] Could not find message ${assistantMessageId} in Dexie to resume.`
+      );
+      sessionStorage.removeItem("inFlightAssistantMessageId");
+      setIsResuming(false);
+      setIsSending(false);
+      return;
+    }
+
+    const cleanup = (sync: boolean = false) => {
+      const cleanupTimestamp = new Date().toLocaleTimeString();
+      console.log(
+        `[${cleanupTimestamp}] [FE] Cleaning up resume process for ${assistantMessageId}. Sync: ${sync}`
+      );
+      isCancelled = true; // Stop the while loop
+      sessionStorage.removeItem("inFlightAssistantMessageId");
+      setIsResuming(false);
+      setIsSending(false);
+      if (sync && messageToResume.thread_supabase_id) {
+        console.log(
+          `[${cleanupTimestamp}] [FE] Resumption complete, performing final sync.`
+        );
+        syncThreadWithAttachments(messageToResume.thread_supabase_id);
+      }
+    };
+
+    let isCancelled = false;
+    const pollInterval = 500;
+    let lastContentLength = -1;
+    let stablePolls = 0;
+
+    // Polling loop is now directly part of resumeStream
+    (async () => {
+        while (!isCancelled) {
+          try {
+            const response = await fetch(
+              `/api/chat/resume?id=${assistantMessageId}`
+            );
+            if (!response.ok) throw new Error("Resume API request failed");
+            const data = await response.json();
+
+            if (data.status === "streaming") {
+              await db.messages.update(messageToResume.id!, {
+                content: data.content,
+              });
+
+              if (data.content.length === lastContentLength) {
+                stablePolls++;
+              } else {
+                stablePolls = 0;
+                lastContentLength = data.content.length;
+              }
+
+              // If content is stable for 2 polls, it's finished.
+              if (stablePolls >= 2) {
+                console.log(`[FE] Content is stable. Finalizing.`);
+                cleanup(true);
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            } else if (data.status === "complete") {
+              console.log(`[FE] Status is 'complete' (key expired). Finalizing.`);
+              cleanup(true);
+              break;
+            }
+          } catch (error) {
+            console.error(`[FE] Error during poll:`, error);
+            cleanup(false); // Cleanup without sync on error
+            break;
+          }
+        }
+      })();
+  };
+
+    const inFlightId = sessionStorage.getItem("inFlightAssistantMessageId");
+    if (inFlightId) {
+      resumeStream(inFlightId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Simple title generation fallback
   async function generateTitleFromPrompt(
     prompt: string,
-    maxLength: number
+    maxLength: number,
   ): Promise<string | null> {
     return prompt ? prompt.slice(0, maxLength) : "New Chat";
   }
@@ -608,7 +704,6 @@ Present code in Markdown code blocks with the correct language extension indicat
     setIsSending(true);
 
     // --- Block 1: Handle Message Editing ---
-    // This logic is now self-contained and runs only when editing.
     if (editingMessage && editingMessage.id) {
       let assistantMessageToUpdate: Message | null = null;
       let assistantLocalMessageId: number | null = null;
@@ -625,7 +720,6 @@ Present code in Markdown code blocks with the correct language extension indicat
         }
         await db.messages.update(editingMessage.id, updateData);
 
-        // BUG FIX: Query using the correct indexed field 'thread_supabase_id'.
         const allMessagesInThread = await db.messages
           .where("thread_supabase_id")
           .equals(threadId)
@@ -635,7 +729,6 @@ Present code in Markdown code blocks with the correct language extension indicat
           (m) => m.id === editingMessage.id
         );
 
-        // *** FIX STARTS HERE ***
         // The entire block of logic that depends on finding the message
         // index is now correctly wrapped in curly braces.
         if (editedMessageIndex !== -1) {
@@ -744,7 +837,6 @@ Present code in Markdown code blocks with the correct language extension indicat
             });
           }
         }
-        // *** FIX ENDS HERE ***
       } catch (err: any) {
         console.error("Failed to update message:", err);
         setError(err.message || "Failed to update message.");
@@ -793,7 +885,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               await syncEditOperationToBackend({
                 threadSupabaseId: editingMessage.thread_supabase_id,
                 messagesToUpsert,
-                idsToDelete, // Pass the list of IDs to delete
+                idsToDelete: idsToDelete, // Pass the list of IDs to delete
               });
             } catch (syncError) {
               console.error(
@@ -807,13 +899,13 @@ Present code in Markdown code blocks with the correct language extension indicat
           }
         }
       }
-      return; // Exit the function after handling the edit.
+      return; 
     }
 
     // --- Block 2: Handle New Message Submission ---
-    // This logic runs only when submitting a new message.
     let currentSupabaseThreadId = supabaseThreadId;
     let assistantLocalMessageId: number | null = null;
+    let assistantMessageSupabaseId: string | null = null;
 
     try {
       // If there's no thread ID in the URL, it's the first message of a new chat.
@@ -899,8 +991,15 @@ Present code in Markdown code blocks with the correct language extension indicat
         createdAt: new Date(),
         model: selectedModel,
       };
+      assistantMessageSupabaseId = assistantMessageData.supabase_id!;
       assistantLocalMessageId = await db.messages.add(assistantMessageData);
 
+      sessionStorage.setItem(
+        "inFlightAssistantMessageId",
+        assistantMessageSupabaseId
+      );
+
+      
       // Clear inputs from UI
       setInput("");
       setAttachedFiles([]);
@@ -915,6 +1014,10 @@ Present code in Markdown code blocks with the correct language extension indicat
       const historyForAI = buildHistoryForAI(fullHistory, modelSupportsImages);
 
       // Call AI API
+      const submitTimestamp = new Date().toLocaleTimeString();
+      console.log(
+        `[${submitTimestamp}] [FE] Sending request to /api/chat with ID: ${assistantMessageSupabaseId}`
+      );
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -922,6 +1025,7 @@ Present code in Markdown code blocks with the correct language extension indicat
           model: selectedModel,
           messages: historyForAI,
           useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
+          assistantMessageId: assistantMessageSupabaseId,
         }),
       });
 
@@ -951,6 +1055,9 @@ Present code in Markdown code blocks with the correct language extension indicat
           }
         });
       }
+      console.log(
+        `[${new Date().toLocaleTimeString()}] [FE] Stream finished normally for ID: ${assistantMessageSupabaseId}`
+      );
     } catch (err: any) {
       console.error("Submit error:", err);
       setError(err.message || "Failed to get response.");
@@ -960,50 +1067,12 @@ Present code in Markdown code blocks with the correct language extension indicat
           content: `Error: ${err.message}`,
         });
       }
+      sessionStorage.removeItem("inFlightAssistantMessageId");
     } finally {
       setIsSending(false);
+      sessionStorage.removeItem("inFlightAssistantMessageId");
       // Sync after the operation completes or fails.
       if (currentSupabaseThreadId) {
-        // Check if this was a new thread or an existing one
-        // const isNewThread = !supabaseThreadId; // If supabaseThreadId was null, it's a new thread
-
-        // if (isNewThread) {
-        //   // For new threads, sync the entire thread
-        //   try {
-        //     await syncThreadWithAttachments(currentSupabaseThreadId);
-        //   } catch (syncError) {
-        //     console.error("Sync failed for new thread:", syncError);
-        //     setError(
-        //       "Message sent but failed to sync to cloud. Your changes are saved locally."
-        //     );
-        //   }
-        // } else {
-        //   // For existing threads, sync only the new messages
-        //   try {
-        //     const userMessage = await db.messages
-        //       .where("thread_supabase_id")
-        //       .equals(currentSupabaseThreadId)
-        //       .and((msg) => msg.role === "user")
-        //       .last();
-
-        //     const assistantMessage = assistantLocalMessageId
-        //       ? await db.messages.get(assistantLocalMessageId)
-        //       : null;
-
-        //     const messagesToSync = [];
-        //     if (userMessage) messagesToSync.push(userMessage);
-        //     if (assistantMessage) messagesToSync.push(assistantMessage);
-
-        //     if (messagesToSync.length > 0) {
-        //       await syncMessagesToBackend(messagesToSync);
-        //     }
-        //   } catch (syncError) {
-        //     console.error("Sync failed for existing thread:", syncError);
-        //     setError(
-        //       "Message sent but failed to sync to cloud. Your changes are saved locally."
-        //     );
-        //   }
-        // }
         try {
           await syncThreadWithAttachments(currentSupabaseThreadId);
         } catch (syncError) {
@@ -1065,7 +1134,6 @@ Present code in Markdown code blocks with the correct language extension indicat
     const messagesToDelete = messages.slice(index + 1);
     for (const msgToDelete of messagesToDelete) {
       if (msgToDelete.id) {
-        // *** FIX: Collect the supabase_id before deleting from Dexie ***
         if (msgToDelete.supabase_id) {
           idsToDelete.push(msgToDelete.supabase_id);
         }
@@ -1091,6 +1159,15 @@ Present code in Markdown code blocks with the correct language extension indicat
       await db.messages.update(msg.id, { content: "" });
     }
 
+    let regenerationStreamId = msg.supabase_id;
+    if (!regenerationStreamId) {
+      regenerationStreamId = uuidv4();
+      await db.messages.update(msg.id, { supabase_id: regenerationStreamId });
+    }
+
+    // Set the session storage key to allow resuming the regeneration on refresh.
+    sessionStorage.setItem("inFlightAssistantMessageId", regenerationStreamId);
+
     try {
       // Main try for handleRegenerate API call and stream processing
       const response = await fetch("/api/chat", {
@@ -1101,7 +1178,8 @@ Present code in Markdown code blocks with the correct language extension indicat
           messages: historyForAI,
           useWebSearch:
             useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
-        }),
+          assistantMessageId: regenerationStreamId,
+          }),
       });
       if (!response.ok || !response.body) throw new Error("API error");
       const reader = response.body.getReader();
@@ -1132,6 +1210,7 @@ Present code in Markdown code blocks with the correct language extension indicat
       }
     } finally {
       setIsSending(false);
+      sessionStorage.removeItem("inFlightAssistantMessageId");
       // Sync only the regenerated message to Supabase
       if (msg.thread_supabase_id && msg.id) {
         try {
@@ -1145,7 +1224,7 @@ Present code in Markdown code blocks with the correct language extension indicat
           await syncEditOperationToBackend({
             threadSupabaseId: msg.thread_supabase_id,
             messagesToUpsert,
-            idsToDelete, // Pass the list of IDs to delete
+            idsToDelete: idsToDelete, // Pass the list of IDs to delete
           });
         } catch (syncError) {
           console.error(
