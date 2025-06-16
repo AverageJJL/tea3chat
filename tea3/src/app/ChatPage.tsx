@@ -17,17 +17,26 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
 
 // SVG Icon components
-const SendHorizonal = () => (
+const SendHorizonal = React.memo(() => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
   </svg>
-);
-const Paperclip = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+));
+const Paperclip = React.memo(() => (
+  <svg
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
-);
+));
 const XSquare = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 6L6 18M6 6l12 12"/>
@@ -364,6 +373,8 @@ export default function ChatPage() {
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   // Add state for copy feedback
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+  // Track which message row is currently hovered so we can conditionally render action buttons
+  const [hoveredMessageId, setHoveredMessageId] = useState<number | null>(null);
   // Add state for textarea expansion
   const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1378,10 +1389,12 @@ Present code in Markdown code blocks with the correct language extension indicat
               className={`group flex ${
                 m.role === "user" ? "justify-end" : "justify-start"
               } mb-12`}
+              onMouseEnter={() => setHoveredMessageId(m.id ?? null)}
+              onMouseLeave={() => setHoveredMessageId((prev) => (prev === m.id ? null : prev))}
             >
               {m.role === "assistant" ? (
                 // Assistant message - no bubble, clean layout
-                <div className="max-w-4xl">
+                <div className="max-w-4xl relative pb-8">
                   <div className="flex items-center mb-3">
                     <div className="flex items-center space-x-2">
                       <div className="text-white/80 text-sm font-medium">
@@ -1705,74 +1718,76 @@ Present code in Markdown code blocks with the correct language extension indicat
                   </div>
                   
                   {/* Action buttons at bottom of message */}
-                  <div className="flex items-center justify-start space-x-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="relative group/copy">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(m.content);
-                            setCopiedMessageId(m.id || null);
-                            setTimeout(() => setCopiedMessageId(null), 2000);
-                          } catch (err) {
-                            console.error("Failed to copy to clipboard:", err);
-                          }
-                        }}
-                        className={`p-1.5 rounded-md transition-all ${
-                          copiedMessageId === m.id
-                            ? "text-green-400 bg-green-500/20"
-                            : "text-white/50 hover:text-white/80 hover:bg-white/10"
-                        }`}
-                      >
-                        {copiedMessageId === m.id ? (
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        ) : (
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        )}
-                      </button>
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                        {copiedMessageId === m.id ? "Copied!" : "Copy message"}
+                  {hoveredMessageId === m.id && (
+                    <div className="absolute bottom-0 left-0 flex items-center space-x-2">
+                      <div className="relative group/copy">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(m.content);
+                              setCopiedMessageId(m.id || null);
+                              setTimeout(() => setCopiedMessageId(null), 2000);
+                            } catch (err) {
+                              console.error("Failed to copy to clipboard:", err);
+                            }
+                          }}
+                          className={`p-1.5 rounded-md transition-all ${
+                            copiedMessageId === m.id
+                              ? "text-green-400 bg-green-500/20"
+                              : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                          }`}
+                        >
+                          {copiedMessageId === m.id ? (
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          )}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          {copiedMessageId === m.id ? "Copied!" : "Copy message"}
+                        </div>
+                      </div>
+                      
+                      <div className="relative group/regen">
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerate(m)}
+                          className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                        >
+                          <Recycle />
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/regen:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          Regenerate response
+                        </div>
                       </div>
                     </div>
-                    
-                    <div className="relative group/regen">
-                      <button
-                        type="button"
-                        onClick={() => handleRegenerate(m)}
-                        className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
-                      >
-                        <Recycle />
-                      </button>
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/regen:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                        Regenerate response
-                      </div>
-                    </div>
-                  </div>
+                  )}
 
                   {m.attachments &&
                     m.attachments.map((att, index) => (
@@ -1798,7 +1813,7 @@ Present code in Markdown code blocks with the correct language extension indicat
                 </div>
               ) : (
                 // User message - glass aesthetic styling
-                <div className="max-w-4xl">
+                <div className="max-w-4xl relative pb-8">
                   <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
                     <div className="text-white/90 leading-relaxed text-lg">
                       <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
@@ -1826,48 +1841,50 @@ Present code in Markdown code blocks with the correct language extension indicat
                       ))}
                   </div>
                   {/* Action buttons for user message */}
-                  <div className="flex items-center justify-end space-x-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="relative group/copy">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(m.content);
-                            setCopiedMessageId(m.id || null);
-                            setTimeout(() => setCopiedMessageId(null), 2000);
-                          } catch (err) {
-                            console.error("Failed to copy to clipboard:", err);
-                          }
-                        }}
-                        className={`p-1.5 rounded-md transition-all ${
-                          copiedMessageId === m.id
-                            ? "text-green-400 bg-green-500/20"
-                            : "text-white/50 hover:text-white/80 hover:bg-white/10"
-                        }`}
-                      >
-                        {copiedMessageId === m.id ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                        )}
-                      </button>
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                        {copiedMessageId === m.id ? "Copied!" : "Copy"}
+                  {hoveredMessageId === m.id && (
+                    <div className="absolute bottom-0 right-0 flex items-center space-x-2">
+                      <div className="relative group/copy">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(m.content);
+                              setCopiedMessageId(m.id || null);
+                              setTimeout(() => setCopiedMessageId(null), 2000);
+                            } catch (err) {
+                              console.error("Failed to copy to clipboard:", err);
+                            }
+                          }}
+                          className={`p-1.5 rounded-md transition-all ${
+                            copiedMessageId === m.id
+                              ? "text-green-400 bg-green-500/20"
+                              : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                          }`}
+                        >
+                          {copiedMessageId === m.id ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                          )}
+                        </button>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          {copiedMessageId === m.id ? "Copied!" : "Copy"}
+                        </div>
+                      </div>
+                      <div className="relative group/edit">
+                        <button
+                          type="button"
+                          onClick={() => handleEditMessage(m)}
+                          className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                        >
+                          <Pencil />
+                        </button>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          Edit
+                        </div>
                       </div>
                     </div>
-                    <div className="relative group/edit">
-                      <button
-                        type="button"
-                        onClick={() => handleEditMessage(m)}
-                        className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
-                      >
-                        <Pencil />
-                      </button>
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                        Edit
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>

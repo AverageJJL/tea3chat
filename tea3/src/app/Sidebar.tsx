@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, memo, useMemo, useCallback } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
 import { createPortal } from "react-dom";
+import { Thread as ThreadType } from "./db";
 
 // Add this helper function at the top level
 const getRelativeTimeGroup = (date: Date): string => {
@@ -218,6 +219,174 @@ const DeleteConfirmationModal = ({
   return null;
 };
 
+// --- Memoized ThreadRow (outside Sidebar to avoid recreation) ---
+interface ThreadRowProps {
+  thread: ThreadType;
+  active: boolean;
+  isEditing: boolean;
+  editingTitle: string;
+  onChangeTitle: (v: string) => void;
+  onTitleKeyDown: (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    thread: ThreadType
+  ) => void;
+  onConfirmRename: (thread: ThreadType) => void;
+  onContextMenu: (
+    e: React.MouseEvent,
+    thread: ThreadType
+  ) => void;
+  setDeletingThread: (t: ThreadType) => void;
+  supabaseThreadId: string | undefined;
+}
+
+const ThreadRow = memo(
+  ({
+    thread,
+    active,
+    isEditing,
+    editingTitle,
+    onChangeTitle,
+    onTitleKeyDown,
+    onConfirmRename,
+    onContextMenu,
+    setDeletingThread,
+    supabaseThreadId,
+  }: ThreadRowProps) => {
+    if (isEditing) {
+      return (
+        <div key={thread.supabase_id} className="relative group p-1.5">
+          <input
+            type="text"
+            value={editingTitle}
+            onChange={(e) => onChangeTitle(e.target.value)}
+            onKeyDown={(e) => onTitleKeyDown(e, thread)}
+            onBlur={() => onConfirmRename(thread)}
+            autoFocus
+            className="w-full bg-white/10 text-white border border-white/20 rounded-lg text-sm px-3 py-2.5 focus:outline-none"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={thread.supabase_id}
+        className="relative group"
+        onContextMenu={(e) => onContextMenu(e, thread)}
+      >
+        <ThreadLink
+          threadId={thread.supabase_id!}
+          disabled={supabaseThreadId === thread.supabase_id?.toString()}
+          className={`block w-full px-3 py-3 rounded-lg text-sm transition-all duration-200 ${
+            active
+              ? "bg-white/10 text-white border border-white/20"
+              : "text-white/70 hover:bg-white/5 hover:text-white"
+          }`}
+          title={thread.title}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1 truncate pr-2 flex items-center space-x-2">
+              {thread.is_pinned && (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="text-white/70 shrink-0"
+                >
+                  <line x1="12" y1="17" x2="12" y2="22"></line>
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z" fill="currentColor"></path>
+                </svg>
+              )}
+              <span>{thread.title}</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDeletingThread(thread);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
+              title="Delete chat"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </ThreadLink>
+      </div>
+    );
+  },
+  (prev, next) => {
+    // Equality check: re-render only if relevant data changes.
+    const threadEqual =
+      prev.thread.title === next.thread.title &&
+      prev.thread.updatedAt.getTime() === next.thread.updatedAt.getTime() &&
+      prev.thread.is_pinned === next.thread.is_pinned;
+
+    return (
+      threadEqual &&
+      prev.active === next.active &&
+      prev.isEditing === next.isEditing &&
+      (prev.isEditing ? prev.editingTitle === next.editingTitle : true)
+    );
+  }
+);
+
+// Lightweight replacement for react-router Link that doesn't subscribe to location changes
+const ThreadLink = memo(
+  ({
+    threadId,
+    disabled,
+    children,
+    className,
+    title,
+  }: {
+    threadId: string;
+    disabled: boolean;
+    children: React.ReactNode;
+    className?: string;
+    title?: string;
+  }) => {
+    const navigate = useNavigate();
+    const handleClick = (e: React.MouseEvent) => {
+      if (disabled) {
+        // Stop the native link navigation if this thread is already active
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
+      navigate(`/chat/${threadId}`);
+    };
+    return (
+      <a
+        href={disabled ? undefined : `/chat/${threadId}`}
+        onClick={handleClick}
+        className={`${className} ${disabled ? "pointer-events-none" : ""}`}
+        title={title}
+        aria-disabled={disabled}
+      >
+        {children}
+      </a>
+    );
+  }
+);
+// --- end ThreadRow ---
+
 export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
@@ -285,18 +454,18 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     [],
   );
 
-  const handleContextMenu = (
-    e: React.MouseEvent,
-    thread: typeof threads[number]
-  ) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      threadId: thread.supabase_id!,
-      isPinned: !!thread.is_pinned,
-    });
-  };
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, thread: ThreadType) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        threadId: thread.supabase_id!,
+        isPinned: !!thread.is_pinned,
+      });
+    },
+    []
+  );
 
   const handleShareThread = async () => {
     if (!contextMenu) return;
@@ -520,108 +689,48 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     }
   };
 
-  const filteredThreads = threads.filter(thread => 
-    thread.title.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredThreads = useMemo(() => {
+    return threads.filter((thread) =>
+      thread.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [threads, searchQuery]);
+
+  const pinnedThreads = useMemo(
+    () => filteredThreads.filter((t) => t.is_pinned),
+    [filteredThreads]
   );
 
-  const pinnedThreads = filteredThreads.filter(t => t.is_pinned);
-  const unpinnedThreads = filteredThreads.filter(t => !t.is_pinned);
+  const unpinnedThreads = useMemo(
+    () => filteredThreads.filter((t) => !t.is_pinned),
+    [filteredThreads]
+  );
 
-  const groupedThreads = unpinnedThreads.reduce((acc, thread) => {
-    // Group by the relative time using the thread's `updatedAt` field.
-    const group = getRelativeTimeGroup(thread.updatedAt);
-    if (!acc[group]) {
-      acc[group] = [];
-    }
-    acc[group].push(thread);
-    return acc;
-  }, {} as Record<string, typeof threads>);
+  const groupedThreads = useMemo(() => {
+    return unpinnedThreads.reduce((acc: Record<string, ThreadType[]>, thread) => {
+      const group = getRelativeTimeGroup(thread.updatedAt);
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(thread);
+      return acc;
+    }, {});
+  }, [unpinnedThreads]);
 
   // Define the order in which to display the groups.
   const groupOrder = ["Today", "Yesterday", "Last 7 days", "Last 30 days", "Older"];
 
-  const renderThread = (thread: typeof threads[number]) => (
-    editingThreadId === thread.supabase_id ? (
-      <div key={thread.supabase_id} className="relative group p-1.5">
-        <input
-          type="text"
-          value={editingTitle}
-          onChange={(e) => setEditingTitle(e.target.value)}
-          onKeyDown={(e) => handleTitleKeyDown(e, thread)}
-          onBlur={() => handleConfirmRename(thread)}
-          autoFocus
-          className="w-full bg-white/10 text-white border border-white/20 rounded-lg text-sm px-3 py-2.5 focus:outline-none"
-        />
-      </div>
-    ) : (
-      <div
-        key={thread.supabase_id}
-        className="relative group"
-        onContextMenu={(e) => handleContextMenu(e, thread)}
-      >
-        <Link
-          to={`/chat/${thread.supabase_id}`}
-          className={`block w-full px-3 py-3 rounded-lg text-sm transition-all duration-200 ${
-            supabaseThreadId ===
-            thread.supabase_id?.toString()
-              ? "bg-white/10 text-white border border-white/20"
-              : "text-white/70 hover:bg-white/5 hover:text-white"
-          }`}
-          title={thread.title}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex-1 truncate pr-2 flex items-center space-x-2">
-              {thread.is_pinned && (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="text-white/70 shrink-0"
-                >
-                  <line
-                    x1="12"
-                    y1="17"
-                    x2="12"
-                    y2="22"
-                  ></line>
-                  <path
-                    d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"
-                    fill="currentColor"
-                  ></path>
-                </svg>
-              )}
-              <span>{thread.title}</span>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDeletingThread(thread);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
-              title="Delete chat"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2" />
-                <line x1="10" y1="11" x2="10" y2="17" />
-                <line x1="14" y1="11" x2="14" y2="17" />
-              </svg>
-            </button>
-          </div>
-        </Link>
-      </div>
-    )
+  const renderThread = (thread: ThreadType) => (
+    <ThreadRow
+      key={thread.supabase_id}
+      thread={thread}
+      active={supabaseThreadId === thread.supabase_id?.toString()}
+      isEditing={editingThreadId === thread.supabase_id}
+      editingTitle={editingTitle}
+      onChangeTitle={setEditingTitle}
+      onTitleKeyDown={handleTitleKeyDown}
+      onConfirmRename={handleConfirmRename}
+      onContextMenu={handleContextMenu}
+      setDeletingThread={setDeletingThread}
+      supabaseThreadId={supabaseThreadId}
+    />
   );
 
   if (!userId) {
