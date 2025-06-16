@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
 import Sidebar from "./Sidebar";
@@ -50,9 +50,28 @@ export default function AppShell() {
   }, [user]);
 
   // Lightweight "new chat" handler – just navigate; ChatPage will create the thread when needed
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     navigate("/chat");
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Shift + Cmd + O (Mac) or Shift + Ctrl + O (Windows) for New Chat
+      if (
+        event.shiftKey &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "o"
+      ) {
+        event.preventDefault();
+        handleNewChat();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleNewChat]);
 
   // While Clerk is loading we just render nothing; higher-level auth gate already shows a loader
   if (!isLoaded) return null;

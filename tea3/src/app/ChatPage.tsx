@@ -1,7 +1,7 @@
 // ChatPage.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -10,6 +10,8 @@ import { uploadFileToSupabaseStorage } from "./supabaseStorage";
 import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
@@ -331,6 +333,8 @@ interface ChatPageContext {
   modelsError: string | null;
 }
 
+// -------------------------
+// Memoized list of messages
 export default function ChatPage() {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
@@ -358,9 +362,18 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+  // Add state for copy feedback
+  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+  // Add state for textarea expansion
+  const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Throttle scroll handler using rAF
+  const scrollRafRef = useRef<number | null>(null);
+  // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
+  const baseTextareaHeightRef = useRef<number>(0);
 
   // Auto-clear error after 3 seconds
   useEffect(() => {
@@ -401,34 +414,31 @@ export default function ChatPage() {
     }
   }, [selectedModel, useWebSearch]);
 
-  // --- MODEL FETCHING ---
-  // useEffect(() => {
-  //   const fetchModels = async () => {
-  //     setIsLoadingModels(true);
-  //     try {
-  //       const response = await fetch("/api/chat"); // Assuming GET on /api/chat lists models
-  //       if (!response.ok) throw new Error("Failed to fetch models");
-  //       const data = await response.json();
-  //       if (data.models && data.models.length > 0) {
-  //         setAvailableModels(data.models);
-  //         // Default to Gemini model, fallback to first model if Gemini not available
-  //         const geminiModel = data.models.find(
-  //           (model: AiModel) =>
-  //             model.value === "gemini-2.5-flash-preview-05-20"
-  //         );
-  //         setSelectedModel(
-  //           geminiModel ? geminiModel.value : data.models[0].value
-  //         );
-  //       }
-  //     } catch (err: any) {
-  //       setError(err.message || "Error loading models.");
-  //       console.error(err);
-  //     } finally {
-  //       setIsLoadingModels(false);
-  //     }
-  //   };
-  //   fetchModels();
-  // }, []);
+  // Establish the baseline (collapsed) height once after mount
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      // After the first render the textarea has 2 rows (collapsed)
+      baseTextareaHeightRef.current = textareaRef.current.scrollHeight;
+    }
+  }, []);
+
+  // Auto-expand / collapse based on the number of lines in the textarea.
+  // This avoids relying on scroll measurements that can be distorted by the
+  // element's "rows" attribute, ensuring it collapses properly when the
+  // content becomes short again.
+  React.useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Count how many logical lines the user has (line breaks + 1)
+    const lineCount = (textarea.value.match(/\n/g) || []).length + 1;
+
+    // Expand when more than 2 lines are present, otherwise collapse
+    const needsExpansion = lineCount > 2;
+
+    // Update state only if it changed to prevent redundant renders
+    setIsTextareaExpanded(prev => (prev !== needsExpansion ? needsExpansion : prev));
+  }, [input]);
 
   // --- DATA FETCHING & SYNC ---
   const messages = useLiveQuery(
@@ -467,21 +477,22 @@ export default function ChatPage() {
 
   // Handle scroll events to control visibility of the "scroll to bottom" button
   const handleScroll = React.useCallback(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    const isScrollable = scrollHeight > clientHeight;
-
-    // Show button when the user is more than 200px away from the bottom
-    setShowScrollButton(distanceFromBottom > 200 && isScrollable);
+    if (scrollRafRef.current !== null) return; // already scheduled
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const scrollContainer = scrollContainerRef.current;
+      if (scrollContainer) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const isScrollable = scrollHeight > clientHeight;
+        setShowScrollButton(distanceFromBottom > 200 && isScrollable);
+      }
+      scrollRafRef.current = null;
+    });
   }, []);
 
-  // Re-evaluate button visibility whenever messages change (e.g., new message appended)
+  // Re-check button visibility whenever the messages array changes (e.g. new streaming chunks)
   useEffect(() => {
-    // Run in next tick to ensure DOM has rendered any new content
-    const id = setTimeout(handleScroll, 50);
+    const id = setTimeout(handleScroll, 50); // delay to allow DOM paint
     return () => clearTimeout(id);
   }, [messages, handleScroll]);
 
@@ -664,14 +675,11 @@ export default function ChatPage() {
 
 If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
 The current date and time including timezone is ${currentTimestamp}.
-Always use LaTeX for mathematical expressions:
+Always use LaTeX for mathematical expressions.
 
-Inline math must be wrapped in escaped parentheses: (content)
-Do not use single dollar signs for inline math
-Display math must be wrapped in double dollar signs: (content)
+For inline math, use a single dollar sign, like $...$. For example, $E = mc^2$.
+For display math, use double dollar signs, like $$...$$. For example, $$\int_{a}^{b} f(x) dx$$.
 
-
-Do not use the backslash character to escape parenthesis. Use the actual parentheses instead.
 Ensure code is properly formatted using Prettier with a print width of 80 characters
 Present code in Markdown code blocks with the correct language extension indicated`;
 
@@ -1089,7 +1097,7 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
 
   // --- HELPER FUNCTIONS for message editing, file handling ---
-  const handleEditMessage = (msg: Message) => {
+  const handleEditMessage = React.useCallback((msg: Message) => {
     setEditingMessage(msg);
     setInput(msg.content);
     setAttachedFiles([]);
@@ -1097,7 +1105,7 @@ Present code in Markdown code blocks with the correct language extension indicat
     if (fileInputRef.current) fileInputRef.current.value = "";
     // Consider scrolling to the input area or the message being edited
     // messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   const handleCancelEdit = () => {
     setEditingMessage(null);
@@ -1124,7 +1132,7 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
   // --- END HELPER FUNCTIONS ---
 
-  const handleRegenerate = async (msg: Message) => {
+  const handleRegenerate = React.useCallback(async (msg: Message) => {
     if (!messages || !msg.id || isSending) return;
     const index = messages.findIndex((m) => m.id === msg.id);
     if (index === -1) return;
@@ -1237,7 +1245,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         }
       }
     }
-  }; // End of handleRegenerate
+  }, [messages, selectedModel, availableModels, useWebSearch, isSending]); // End of handleRegenerate
 
   // Helper function to process a File object (used by both file input and drag&drop)
   const processFiles = (files: File[]) => {
@@ -1347,7 +1355,7 @@ Present code in Markdown code blocks with the correct language extension indicat
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <div className="mx-auto max-w-5xl space-y-6 px-4 pb-45">
+        <div className="mx-auto max-w-5xl space-y-8 px-4 pb-45">
           {/* Welcome message when no messages */}
           {(!messages || messages.length === 0) &&
             attachedFiles.length === 0 && (
@@ -1367,12 +1375,12 @@ Present code in Markdown code blocks with the correct language extension indicat
               key={m.id}
               className={`group flex ${
                 m.role === "user" ? "justify-end" : "justify-start"
-              } mb-8`}
+              } mb-12`}
             >
               {m.role === "assistant" ? (
                 // Assistant message - no bubble, clean layout
                 <div className="max-w-4xl">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center mb-3">
                     <div className="flex items-center space-x-2">
                       <div className="text-white/80 text-sm font-medium">
                         {availableModels.find((am) => am.value === m.model)
@@ -1382,18 +1390,11 @@ Present code in Markdown code blocks with the correct language extension indicat
                         {new Date(m.createdAt).toLocaleTimeString()}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRegenerate(m)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
-                      title="Regenerate response"
-                    >
-                      <Recycle />
-                    </button>
                   </div>
-                  <div className="prose prose-invert prose-lg max-w-none text-white/90 leading-relaxed">
+                  <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
                       components={{
                         code({
                           inline,
@@ -1658,22 +1659,22 @@ Present code in Markdown code blocks with the correct language extension indicat
                           );
                         },
                         p: ({ children }) => (
-                          <p className="mb-4 last:mb-0 text-white/90 leading-relaxed">
+                          <p className="mb-4 last:mb-0 text-white/90 leading-relaxed text-lg">
                             {children}
                           </p>
                         ),
                         ul: ({ children }) => (
-                          <ul className="mb-4 space-y-1 text-white/90">
+                          <ul className="mb-4 space-y-1 text-white/90 text-lg">
                             {children}
                           </ul>
                         ),
                         ol: ({ children }) => (
-                          <ol className="mb-4 space-y-1 text-white/90">
+                          <ol className="mb-4 space-y-1 text-white/90 text-lg">
                             {children}
                           </ol>
                         ),
                         li: ({ children }) => (
-                          <li className="text-white/90">{children}</li>
+                          <li className="text-white/90 text-lg">{children}</li>
                         ),
                         h1: ({ children }) => (
                           <h1 className="text-2xl font-bold text-white mb-4 mt-6 first:mt-0">
@@ -1691,7 +1692,7 @@ Present code in Markdown code blocks with the correct language extension indicat
                           </h3>
                         ),
                         blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic">
+                          <blockquote className="border-l-4 border-blue-500/50 pl-4 my-4 text-white/80 italic text-lg">
                             {children}
                           </blockquote>
                         ),
@@ -1700,6 +1701,77 @@ Present code in Markdown code blocks with the correct language extension indicat
                       {m.content}
                     </ReactMarkdown>
                   </div>
+                  
+                  {/* Action buttons at bottom of message */}
+                  <div className="flex items-center justify-start space-x-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="relative group/copy">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(m.content);
+                            setCopiedMessageId(m.id || null);
+                            setTimeout(() => setCopiedMessageId(null), 2000);
+                          } catch (err) {
+                            console.error("Failed to copy to clipboard:", err);
+                          }
+                        }}
+                        className={`p-1.5 rounded-md transition-all ${
+                          copiedMessageId === m.id
+                            ? "text-green-400 bg-green-500/20"
+                            : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                        }`}
+                      >
+                        {copiedMessageId === m.id ? (
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        ) : (
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        {copiedMessageId === m.id ? "Copied!" : "Copy message"}
+                      </div>
+                    </div>
+                    
+                    <div className="relative group/regen">
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerate(m)}
+                        className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                      >
+                        <Recycle />
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/regen:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                        Regenerate response
+                      </div>
+                    </div>
+                  </div>
+
                   {m.attachments &&
                     m.attachments.map((att, index) => (
                       <div key={index} className="mt-4">
@@ -1730,16 +1802,50 @@ Present code in Markdown code blocks with the correct language extension indicat
                       <div className="text-white/40 text-xs">
                         {new Date(m.createdAt).toLocaleTimeString()}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleEditMessage(m)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md"
-                        title="Edit message"
-                      >
-                        <Pencil />
-                      </button>
+                      <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="relative group/copy">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(m.content);
+                                setCopiedMessageId(m.id || null);
+                                setTimeout(() => setCopiedMessageId(null), 2000);
+                              } catch (err) {
+                                console.error("Failed to copy to clipboard:", err);
+                              }
+                            }}
+                            className={`p-1.5 rounded-md transition-all ${
+                              copiedMessageId === m.id
+                                ? "text-green-400 bg-green-500/20"
+                                : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                            }`}
+                          >
+                            {copiedMessageId === m.id ? (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                            )}
+                          </button>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/copy:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                            {copiedMessageId === m.id ? "Copied!" : "Copy"}
+                          </div>
+                        </div>
+                        <div className="relative group/edit">
+                          <button
+                            type="button"
+                            onClick={() => handleEditMessage(m)}
+                            className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                          >
+                            <Pencil />
+                          </button>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800/90 backdrop-blur text-white text-xs rounded opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                            Edit
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-white/90 leading-relaxed">
+                    <div className="text-white/90 leading-relaxed text-lg">
                       <p style={{ whiteSpace: "pre-wrap" }}>{m.content}</p>
                     </div>
                     {m.attachments &&
@@ -1772,34 +1878,10 @@ Present code in Markdown code blocks with the correct language extension indicat
         </div>
       </div>
 
-      <div className="absolute bottom-2 left-0 right-0 z-20">
-        {/* Scroll to bottom button */}
-        {showScrollButton && (
-          <div className="flex justify-center mb-4">
-            <button
-              onClick={scrollToBottom}
-              className="bg-gray-800/90 hover:bg-gray-700/90 backdrop-blur-sm border border-gray-600/50 text-white/80 hover:text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 text-sm font-medium"
-              title="Scroll to bottom"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M7 13l3 3 3-3" />
-                <path d="M7 6l3 3 3-3" />
-              </svg>
-              <span>Scroll to bottom</span>
-            </button>
-          </div>
-        )}
-        <div className="pt-8 pb-6">
-          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto px-4">
+      {/* Chatbar wrapper: flush to bottom on mobile, slight gap on md+ */}
+      <div className="absolute bottom-0 md:bottom-2 left-0 right-0 z-20">
+        <div className="pt-8 pb-0 md:pb-6">
+          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
             <div className="glass-effect backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col">
               {editingMessage && (
                 <div className="mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
@@ -1820,13 +1902,14 @@ Present code in Markdown code blocks with the correct language extension indicat
               )}
 
               <textarea
+                ref={textareaRef}
                 className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
                 value={input}
                 placeholder="Ask anything..."
                 onChange={(e) => setInput(e.target.value)}
                 disabled={isSending}
-                rows={1}
-                style={{ minHeight: "2.5rem", maxHeight: "8rem" }}
+                rows={isTextareaExpanded ? 4 : 2}
+                style={{ minHeight: isTextareaExpanded ? "4rem" : "2.5rem", maxHeight: "8rem" }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -1893,7 +1976,12 @@ Present code in Markdown code blocks with the correct language extension indicat
                       <select
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
-                        className="glass-button-sidebar px-3 py-2 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0"
+                        /*
+                          Responsive sizing:
+                          - Default (mobile): tighter padding, smaller text, truncate long labels.
+                          - md and up: original spacing / font.
+                        */
+                        className="glass-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
                         disabled={
                           isLoadingModels || availableModels.length === 0
                         }
