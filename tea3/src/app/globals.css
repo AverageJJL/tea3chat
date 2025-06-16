@@ -211,3 +211,55 @@
 .drag-hint.hidden {
   opacity: 0;
 }
+
+/* Code block styling */
+.code-block-container {
+  @apply my-4 rounded-xl overflow-hidden border border-gray-600/30 w-full;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.code-block-header {
+  @apply px-4 py-2 bg-gray-800/50 border-b border-gray-600/30 flex items-center justify-between;
+}
+
+.code-block-language {
+  @apply text-gray-300 text-sm font-medium;
+}
+
+.code-block-copy-btn {
+  @apply text-gray-400 hover:text-white transition-colors p-1 rounded opacity-0 group-hover:opacity-100;
+}
+
+.code-block-content {
+  @apply overflow-x-auto;
+}
+
+.code-block-content pre {
+  @apply !m-0 !px-6 !py-5 !bg-transparent;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 15px;
+  line-height: 1.8;
+  letter-spacing: 0.025em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.code-block-content code {
+  @apply !bg-transparent;
+}
+
+/* Inline code styling */
+.prose code:not(.code-block-content code) {
+  @apply px-2 py-1 rounded-md bg-gray-700/50 text-gray-200 text-sm font-mono border border-gray-600/30;
+}
+
+/* Markdown in messages should respect single newlines */
+.message-markdown p {
+  white-space: pre-wrap;
+  margin-bottom: 1.25rem;
+}
+
+.message-markdown p:last-child {
+  margin-bottom: 0; /* Remove margin from last paragraph */
+}
