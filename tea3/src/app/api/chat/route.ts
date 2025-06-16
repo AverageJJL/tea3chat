@@ -199,10 +199,17 @@ async function processAIAndCacheInBackground({
         })
       );
 
-      const generateConfig: any = { model, contents: geminiMessages };
+      const generateConfig: any = {
+        model,
+        contents: geminiMessages,
+        config: {
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      };
       if (useWebSearch) {
-        generateConfig.config = { tools: [{ googleSearch: {} }] };
+        generateConfig.config.tools = [{ googleSearch: {} }];
       }
+      
       const stream =
         await geminiClient.models.generateContentStream(generateConfig);
       for await (const chunk of stream) {

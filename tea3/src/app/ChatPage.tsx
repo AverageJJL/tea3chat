@@ -1,6 +1,7 @@
 // ChatPage.tsx
 "use client";
 
+import { scan } from "react-scan";
 import React, { useState, useEffect, useRef} from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
@@ -15,6 +16,14 @@ import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 // import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
+
+scan({
+  enabled: true,
+  log: false,
+  showToolbar: true,
+  animationSpeed: 'fast',
+  trackUnnecessaryRenders: true,
+})
 
 // SVG Icon components
 const SendHorizonal = React.memo(() => (
@@ -356,6 +365,7 @@ const MessageRow = React.memo(
     onRegenerate: (m: Message) => void;
   }) {
     // No hover state; CSS handles visibility via group-hover
+    const [isCopied, setIsCopied] = React.useState(false);
 
     // Callbacks are stable via useCallback
     const handleCopy = React.useCallback(() => {
@@ -371,6 +381,74 @@ const MessageRow = React.memo(
     // Determine role
     const isAssistant = message.role === "assistant";
 
+    // Create a custom code component to handle syntax highlighting
+    const CodeBlock = React.useCallback(({ inline, className, children, ...rest }: any) => {
+      const [codeIsCopied, setCodeIsCopied] = React.useState(false);
+      const match = /language-(\w+)/.exec(className || "");
+      
+      const handleCodeCopy = React.useCallback(async () => {
+        try {
+          await navigator.clipboard.writeText(String(children));
+          setCodeIsCopied(true);
+          setTimeout(() => setCodeIsCopied(false), 2000);
+        } catch (err) {
+          console.error("Failed to copy code:", err);
+        }
+      }, [children]);
+      
+      return !inline && match ? (
+        <div className="code-block-container group">
+          <div className="code-block-header">
+            <span className="code-block-language">
+              {match[1]}
+            </span>
+            <button
+              onClick={handleCodeCopy}
+              className="code-block-copy-btn"
+              title={codeIsCopied ? "Copied!" : "Copy code"}
+            >
+              {codeIsCopied ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="code-block-content">
+            <SyntaxHighlighter
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore – style typing mismatch
+              style={vscDarkPlus as any}
+              language={match[1]}
+              PreTag="div"
+              showLineNumbers={false}
+              wrapLines={false}
+              customStyle={{
+                margin: 0,
+                padding: '20px 24px',
+                background: 'transparent',
+                fontSize: '15px',
+                lineHeight: '1.8',
+                letterSpacing: '0.025em',
+              }}
+              {...(rest as any)}
+            >
+              {String(children).replace(/\n$/, "")}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      ) : (
+        <code className={className} {...(rest as any)}>
+          {children}
+        </code>
+      );
+    }, []);
+
     // Memoise heavy Markdown render
     const markdownBody = React.useMemo(() => {
       if (!isAssistant) return null;
@@ -378,13 +456,14 @@ const MessageRow = React.memo(
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
+          components={{
+            code: CodeBlock,
+          }}
         >
           {message.content}
         </ReactMarkdown>
       );
-    }, [isAssistant, message.content]);
-
-    const [isCopied, setIsCopied] = React.useState(false);
+    }, [isAssistant, message.content, CodeBlock]);
 
     return (
       <div
@@ -393,7 +472,7 @@ const MessageRow = React.memo(
         } mb-12`}
       >
         {isAssistant ? (
-          <div className="max-w-4xl relative pb-8">
+          <div className="max-w-4xl w-full relative pb-8">
             {/* Header: model name + timestamp */}
             <div className="flex items-center mb-3">
               <div className="flex items-center space-x-2">
@@ -407,7 +486,7 @@ const MessageRow = React.memo(
               </div>
             </div>
             {/* Markdown body */}
-            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
+            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg message-markdown">
               {markdownBody}
             </div>
             {/* Action buttons; visible on hover via CSS */}
