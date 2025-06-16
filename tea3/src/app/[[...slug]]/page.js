@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { SignIn, SignUp, useUser } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
+import LandingPage from "../components/LandingPage";
 
 // Dynamically import the router component with no SSR
 const ClientRouter = dynamic(() => import("./ClientRouter"), {
@@ -20,19 +21,18 @@ export default function AppClientRouter() {
   const { isSignedIn, isLoaded } = useUser();
   const router = useRouter();
   const pathname = usePathname();
-
   useEffect(() => {
     if (!isLoaded) return; // Wait for Clerk to load before doing anything
 
     if (isSignedIn) {
-      // If user is signed in and tries to access an auth page (sign-in, sign-up),
+      // If user is signed in and tries to access an auth page (sign-in, sign-up) or landing page,
       // redirect them to the main application (e.g., /chat).
       if (pathname === "/" || pathname === "/sign-in" || pathname === "/sign-up") {
         router.push("/chat");
       }
     } else {
       // If user is not signed in and tries to access a page that isn't explicitly
-      // a sign-in or sign-up page, redirect them to the sign-in page (/).
+      // a sign-in, sign-up, or landing page, redirect them to the landing page (/).
       if (pathname !== "/" && pathname !== "/sign-in" && pathname !== "/sign-up") {
         router.push("/");
       }
@@ -62,17 +62,18 @@ export default function AppClientRouter() {
     // If signed in and not on an auth path, render the main ClientRouter.
     return <ClientRouter />;
   }
-
   // If user is not signed in (and Clerk is loaded):
-  // Render the appropriate Clerk component based on the current path.
-  // The parent <main> in layout.js should handle overall page structure.
-  // These divs ensure the Clerk components are centered within that structure.
-  if (pathname === "/" || pathname === "/sign-in") {
+  // Show landing page for root path, Clerk components for explicit auth paths
+  if (pathname === "/") {
+    return <LandingPage />;
+  }
+
+  if (pathname === "/sign-in") {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <SignIn
           routing="path"
-          path="/" // This page handles sign-in at the root path
+          path="/sign-in"
           signUpUrl="/sign-up"
           afterSignInUrl="/chat"
         />

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef} from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
-import { useUser } from "@clerk/nextjs";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, Thread, Message, MessageAttachment } from "./db"; // Ensure MessageAttachment is exported from db.ts
 import { uploadFileToSupabaseStorage } from "./supabaseStorage";
@@ -1566,8 +1566,18 @@ Present code in Markdown code blocks with the correct language extension indicat
           {/* Removed Model Selector and Web Search Toggle - moved to chatbar */}
         </div>
         {user && (
-          <div className="text-white">
-            {user.primaryEmailAddress?.emailAddress}
+          <div className="flex items-center space-x-3 text-white">
+            <UserButton 
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8",
+                  userButtonPopoverCard: "bg-gray-900/95 backdrop-blur border border-gray-700",
+                  userButtonPopoverActionButton: "text-white hover:bg-gray-700",
+                  userButtonPopoverActionButtonText: "text-white",
+                  userButtonPopoverFooter: "hidden"
+                }
+              }}
+            />
           </div>
         )}
       </div>

@@ -753,8 +753,8 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         {/* Toggle button - positioned fixed when collapsed */}
         <button
           onClick={toggleSidebar}
-          className={`glass-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
-            isCollapsed ? "fixed top-8 left-4" : "absolute top-8 left-4"
+         className={`glass-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
+            isCollapsed ? "fixed top-4 left-4" : "absolute top-4 left-4"
           }`}
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -806,7 +806,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
       <button
         onClick={toggleSidebar}
         className={`glass-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
-          isCollapsed ? "fixed top-12 left-4" : "absolute top-12 left-4"
+          isCollapsed ? "fixed top-4 left-4" : "absolute top-4 left-4"
         }`}
         title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
