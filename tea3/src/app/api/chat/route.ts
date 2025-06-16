@@ -1,146 +1,26 @@
 // api/chat/route.ts
-import { createOpenAI } from "@ai-sdk/openai";
-import { streamText } from "ai";
-import { GoogleGenAI, createPartFromUri, Part } from "@google/genai";
 import { getRedisClient } from "@/lib/redis";
-
-// Groq provider
-const groq = createOpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-});
-
-// OpenRouter provider
-const openrouter = createOpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
-});
-
-// Gemini provider  
-const geminiClient = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY!
-});
+import { PROVIDERS, ModelProvider } from "@/src/providers";
 
 
-// Helper function to fetch and convert external files to base64
-async function fetchFileAsBase64(url: string, originalMimeType?: string): Promise<{ data: string; mimeType: string }> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch file: ${response.status}`);
-    }
-    
-    const buffer = await response.arrayBuffer();
-    const base64Data = Buffer.from(buffer).toString('base64');
-    
-    // Try to get mime type from response headers, fallback to original or infer from URL
-    let mimeType = response.headers.get('content-type') || originalMimeType || 'application/octet-stream';
-    
-    if (!mimeType || mimeType === 'application/octet-stream') {
-      // Infer from URL extension if content-type is not available
-      const extension = url.split('.').pop()?.toLowerCase();
-      switch (extension) {
-        case 'png': mimeType = 'image/png'; break;
-        case 'jpg': case 'jpeg': mimeType = 'image/jpeg'; break;
-        case 'gif': mimeType = 'image/gif'; break;
-        case 'webp': mimeType = 'image/webp'; break;
-        case 'pdf': mimeType = 'application/pdf'; break;
-        case 'txt': mimeType = 'text/plain'; break;
-        case 'json': mimeType = 'application/json'; break;
-        case 'xml': mimeType = 'application/xml'; break;
-        case 'csv': mimeType = 'text/csv'; break;
-        case 'rtf': mimeType = 'application/rtf'; break;
-        default: mimeType = originalMimeType || 'application/octet-stream'; break;
-      }
-    }
-    
-    return { data: base64Data, mimeType };
-  } catch (error) {
-    console.error('Error fetching file:', error);
-    throw new Error(`Failed to fetch file from URL: ${url}`);
-  }
-}
-
-// New helper function to upload files to Gemini and get a file part
-async function handleFileUploadForGemini(url: string, mimeType: string, displayName: string): Promise<Part | null> {
-  try {
-    console.log(`[Gemini File API] Fetching: ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to fetch file for Gemini upload: ${response.status}`);
-    
-    const fileBuffer = await response.arrayBuffer();
-
-    console.log(`[Gemini File API] Uploading ${displayName} (${mimeType}) to Gemini...`);
-    const uploadedFile = await geminiClient.files.upload({
-      file: new Blob([fileBuffer], { type: mimeType }),
-      config: {
-        displayName: displayName,
-      }
-    });
-
-    let getFile = await geminiClient.files.get({ name: uploadedFile.name });
-    while (getFile.state === 'PROCESSING') {
-      console.log(`[Gemini File API] Status: ${getFile.state}, retrying in 2 seconds...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      getFile = await geminiClient.files.get({ name: uploadedFile.name });
-    }
-
-    if (getFile.state === 'FAILED') {
-      console.error('[Gemini File API] File processing failed:', getFile);
-      throw new Error('File processing by Gemini failed.');
-    }
-    
-    if (getFile.state === 'ACTIVE' && getFile.uri) {
-      console.log(`[Gemini File API] File processed. URI: ${getFile.uri}`);
-      return createPartFromUri(getFile.uri, getFile.mimeType);
-    } else {
-      console.error('[Gemini File API] File is not active or has no URI.', getFile);
-      return null;
-    }
-  } catch (error) {
-    console.error('[Gemini File API] Error during file upload and processing:', error);
-    return null;
-  }
-}
-
-// Legacy function for backward compatibility
-async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string }> {
-  return fetchFileAsBase64(url, 'image/jpeg');
-}
-
-// Model to provider mapping
-const MODEL_PROVIDERS = {
-  "llama3-8b-8192": {
-    provider: groq,
-    displayName: "Llama 3 8B (Groq)",
-    supportsImages: false,
-  },
-  "deepseek/deepseek-chat-v3-0324": {
-    provider: openrouter,
-    displayName: "Deepseek V3 0324 (OpenRouter)",
-    supportsImages: false,
-  },
-
-  "gemini-2.5-flash-preview-05-20": {
-    provider: "google",
-    displayName: "Gemini 2.5 Flash (Google)",
-    supportsImages: true,
-  },
-} as const;
+// Map of model names to the provider key defined in src/providers
+export const MODEL_TO_PROVIDER: Record<string, string> = {
+  "llama3-8b-8192": "groq",
+  "deepseek/deepseek-chat-v3-0324": "openrouter",
+  "gemini-2.5-flash-preview-05-20": "gemini",
+};
 async function processAIAndCacheInBackground({
+  provider,
   model,
-  modelConfig,
   messages,
   useWebSearch,
-  useDeepResearch,
   redisKey,
   timestamp,
 }: {
+  provider: ModelProvider;
   model: string;
-  modelConfig: any;
   messages: any[];
   useWebSearch: boolean;
-  useDeepResearch: boolean;
   redisKey: string;
   timestamp: string;
 }) {
@@ -154,177 +34,10 @@ async function processAIAndCacheInBackground({
 
     redis = await getRedisClient();
 
-    if (useDeepResearch) {
-      console.log(
-        `[${timestamp}] [BACKGROUND] Using Perplexity Sonar for key: ${redisKey}`
-      );
-
-      // Perplexity API only supports user and assistant roles, and a single system message.
-      const systemMessage =
-        messages.find((m: any) => m.role === "system")?.content ||
-        "Be precise and concise.";
-      let history = messages.filter((m: any) => m.role !== "system");
-
-      // Perplexity requires the last message to be from the user.
-      // If the last message is an empty assistant message (our placeholder), remove it.
-      if (history.length > 0) {
-        const lastMessage = history[history.length - 1];
-        if (lastMessage.role === 'assistant' && lastMessage.content === '') {
-            history.pop();
-        }
-      }
-
-      // Ensure content is always a string for the Perplexity API
-      const perplexityMessages = history.map((m: any) => ({
-        role: m.role,
-        content:
-          typeof m.content === "string"
-            ? m.content
-            : JSON.stringify(m.content),
-      }));
-
-      const response = await fetch("https://api.perplexity.ai/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "sonar-deep-research",
-          messages: [
-            { role: "system", content: systemMessage },
-            ...perplexityMessages,
-          ],
-          search_mode: "web",
-          reasoning_effort: "low",
-          max_tokens: 800,
-          temperature: 0.2,
-          top_p: 0.9,
-          top_k: 0,
-          stream: true
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        const errText = await response.text();
-        throw new Error(`Perplexity API error: ${response.status} ${errText}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      let streamFinished = false;
-      while (!streamFinished) {
-        const { done, value } = await reader.read();
-        if (done) break; // underlying connection closed
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-
-          const dataContent = line.substring(6).trim();
-          if (dataContent === "[DONE]") {
-            streamFinished = true; // break the outer loop on next check
-            break; // leave the inner loop immediately
-          }
-
-          try {
-            const json = JSON.parse(dataContent);
-            const text = json.choices?.[0]?.delta?.content || "";
-            if (text) {
-              finalContent += text;
-              const state = { status: "streaming", content: finalContent };
-              await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
-            }
-          } catch (e) {
-            console.warn("Failed to parse perplexity stream line", line, e);
-          }
-        }
-      }
-    } else if (modelConfig.provider === "google") {
-      const geminiMessages = await Promise.all(
-        messages.map(async (m: any) => {
-          const role = m.role === "assistant" ? "model" : "user";
-          let parts: any[] = [];
-          if (Array.isArray(m.content)) {
-            for (const part of m.content) {
-              if (part.type === "text") {
-                parts.push({ text: part.text });
-              } else if (part.type === "image_url") {
-                const imageUrl = part.image_url.url;
-                if (imageUrl.startsWith("data:")) {
-                  const [mimeInfo, base64Data] = imageUrl.split(",");
-                  const mimeType =
-                    mimeInfo.match(/data:([^;]+)/)?.[1] || "image/jpeg";
-                  parts.push({
-                    inlineData: { data: base64Data, mimeType: mimeType },
-                  });
-                } else {
-                  const { data, mimeType } = await fetchImageAsBase64(imageUrl);
-                  parts.push({ inlineData: { data: data, mimeType: mimeType } });
-                }
-              } else if (part.type === "file_url") {
-                const { url, mime_type, file_name } = part.file_url;
-                if (mime_type === "application/pdf") {
-                  const uploadedFilePart = await handleFileUploadForGemini(
-                    url,
-                    mime_type,
-                    file_name
-                  );
-                  if (uploadedFilePart) parts.push(uploadedFilePart);
-                } else {
-                  const { data, mimeType } = await fetchFileAsBase64(
-                    url,
-                    mime_type
-                  );
-                  parts.push({ inlineData: { data, mimeType } });
-                }
-              }
-            }
-          } else {
-            parts = [{ text: m.content }];
-          }
-          return { role, parts };
-        })
-      );
-
-      const generateConfig: any = {
-        model,
-        contents: geminiMessages,
-        config: {
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      };
-      if (useWebSearch) {
-        generateConfig.config.tools = [{ googleSearch: {} }];
-      }
-      
-      const stream =
-        await geminiClient.models.generateContentStream(generateConfig);
-      for await (const chunk of stream) {
-        const text = chunk.text || "";
-        if (text) {
-          finalContent += text;
-          console.log( `[${timestamp}] [CHAT] Gemini chunk received: "${text}"`);
-          // await redis.append(redisKey, text);
-          // await redis.expire(redisKey, 300);
-          const state = { status: "streaming", content: finalContent };
-          await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
-        }
-      }
-    } else {
-      // Handle other providers (Groq, OpenRouter)
-      const streamResult = await streamText({
-        model: (modelConfig.provider as any)(model),
-        messages,
-      });
-      for await (const text of streamResult.textStream) {
-        finalContent += text;
-        const state = { status: "streaming", content: finalContent };
-        await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
-      }
+    for await (const chunk of provider.stream({ model, messages, useWebSearch })) {
+      finalContent += chunk;
+      const state = { status: "streaming", content: finalContent };
+      await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
     }
     console.log(
       `[${timestamp}] [BACKGROUND] AI processing finished for key: ${redisKey}.`
@@ -336,11 +49,6 @@ async function processAIAndCacheInBackground({
     );
     finalContent = `Error: Generation failed.`;
   } finally {
-    
-    // console.log(
-    //   `[${timestamp}] [BACKGROUND] Deleting Redis key: ${redisKey}`
-    // );
-    // await redis.del(redisKey);
     console.log(
       `[${timestamp}] [BACKGROUND] Task complete. Setting final content for key ${redisKey} with 60s TTL.`
     );
@@ -368,22 +76,24 @@ export async function POST(req: Request) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    let modelConfig: any = null;
-    if (!useDeepResearch) {
+    let providerKey: string | undefined;
+    if (useDeepResearch) {
+      providerKey = "perplexity";
+    } else {
       if (!model) {
         return new Response(
           JSON.stringify({ error: "Model selection is required" }),
           { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
-
-      modelConfig = MODEL_PROVIDERS[model as keyof typeof MODEL_PROVIDERS];
-      if (!modelConfig) {
+      providerKey = MODEL_TO_PROVIDER[model];
+      if (!providerKey) {
         return new Response(JSON.stringify({ error: "Invalid model" }), {
           status: 400,
         });
       }
     }
+    const provider = PROVIDERS[providerKey];
     // Add other validations as needed...
 
     if (!assistantMessageId) throw new Error("assistantMessageId is required.");
@@ -400,11 +110,10 @@ export async function POST(req: Request) {
     // --- DECOUPLING ---
     // Start the background processing but DO NOT await it.
     processAIAndCacheInBackground({
+      provider,
       model,
-      modelConfig,
       messages,
       useWebSearch,
-      useDeepResearch,
       redisKey,
       timestamp,
     });
@@ -488,15 +197,16 @@ export async function POST(req: Request) {
 // Export available models for frontend use
 export async function GET() {
   try {
-    const models = Object.entries(MODEL_PROVIDERS).map(([value, config]) => ({
+    const models = Object.entries(MODEL_TO_PROVIDER).map(([value, key]) => ({
       value,
-      displayName: config.displayName
+      displayName: PROVIDERS[key].displayName,
+      supportsImages: PROVIDERS[key].supportsImages,
     }));
-    
+
     return Response.json({ models });
   } catch (error) {
     console.error("Failed to fetch models:", error);
-    return new Response(JSON.stringify({ error: "Failed to load available models" }), { 
+    return new Response(JSON.stringify({ error: "Failed to load available models" }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
