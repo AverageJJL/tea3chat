@@ -668,7 +668,7 @@ export default function ChatPage() {
     };
 
     let isCancelled = false;
-    const pollInterval = 500;
+    const pollInterval = 1500;
     let lastContentLength = -1;
     let stablePolls = 0;
 
@@ -1375,12 +1375,9 @@ Present code in Markdown code blocks with the correct language extension indicat
 
   const handleBranch = React.useCallback(
     async (messageToBranchFrom: Message) => {
-      console.log("trying to branch from message:", messageToBranchFrom);
-      
+
       if (!user || !user.id || isSending) return;
 
-      console.log("Branching from message with ID:", messageToBranchFrom.id);
-      
       setIsSending(true);
       setError(null);
 

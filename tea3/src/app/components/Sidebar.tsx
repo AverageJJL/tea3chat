@@ -205,6 +205,7 @@ const DeleteConfirmationModal = ({
           <button
             onClick={onConfirm}
             className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm"
+            autoFocus
           >
             Delete
           </button>
@@ -271,13 +272,13 @@ const ThreadRow = memo(
     return (
       <div
         key={thread.supabase_id}
-        className="relative group"
+        className="relative group flex items-center"
         onContextMenu={(e) => onContextMenu(e, thread)}
       >
         <ThreadLink
           threadId={thread.supabase_id!}
           disabled={supabaseThreadId === thread.supabase_id?.toString()}
-          className={`block w-full px-3 py-3 rounded-lg text-sm transition-all duration-200 ${
+          className={`flex-1 block px-3 py-3 rounded-lg text-sm transition-all duration-200 group-hover:mr-2 ${
             active
               ? "bg-white/10 text-white border border-white/20"
               : "text-white/70 hover:bg-white/5 hover:text-white"
@@ -306,35 +307,37 @@ const ThreadRow = memo(
                   <Branch />
                 </div>
               )}
-              <span>{thread.title}</span>
+              <span className="truncate">{thread.title}</span>
             </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDeletingThread(thread);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
-              title="Delete chat"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
-                <line x1="10" y1="11" x2="10" y2="17"/>
-                <line x1="14" y1="11" x2="14" y2="17"/>
-              </svg>
-            </button>
           </div>
         </ThreadLink>
+        
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDeletingThread(thread);
+          }}
+          className="w-0 opacity-0 group-hover:w-8 group-hover:opacity-100 transition-all duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300 overflow-hidden shrink-0"
+          title="Delete chat"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0"
+          >
+            <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+            <line x1="10" y1="11" x2="10" y2="17"/>
+            <line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+        </button>
       </div>
     );
   },
@@ -630,24 +633,27 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
       .where("thread_supabase_id")
       .equals(supabaseIdToDelete)
       .delete();
-
     // Remove thread locally using the supabase_id index
     await db.threads.where("supabase_id").equals(supabaseIdToDelete).delete();
 
-    // Remove from Supabase
-    try {
-      await fetch(`/api/sync/thread?supabase_id=${supabaseIdToDelete}`, {
-        method: "DELETE",
-      });
-    } catch (err) {
-      console.error("Failed to delete thread on Supabase:", err);
-    }
-
-    // Navigate away if the deleted thread was open
     if (supabaseThreadId === supabaseIdToDelete) {
       navigate("/chat");
     }
+    // Close the confirmation modal.
     setDeletingThread(null);
+
+    // Remove from Supabase
+    fetch(`/api/sync/thread?supabase_id=${supabaseIdToDelete}`, {
+      method: "DELETE",
+    }).catch((err) => {
+      // If the background deletion fails, we log the error.
+      // The UI is already updated optimistically. A more robust implementation
+      // could involve a sync queue to retry failed operations.
+      console.error(
+        `Background deletion failed for thread ${supabaseIdToDelete}:`,
+        err
+      );
+    });
   };
 
   const handleStartRename = () => {
