@@ -668,7 +668,7 @@ export default function ChatPage() {
     };
 
     let isCancelled = false;
-    const pollInterval = 1500;
+    const pollInterval = 2000;
     let lastContentLength = -1;
     let stablePolls = 0;
 

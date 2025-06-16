@@ -278,7 +278,7 @@ const ThreadRow = memo(
         <ThreadLink
           threadId={thread.supabase_id!}
           disabled={supabaseThreadId === thread.supabase_id?.toString()}
-          className={`flex-1 block px-3 py-3 rounded-lg text-sm transition-all duration-200 group-hover:mr-2 ${
+          className={`flex-1 block px-3 py-3 rounded-lg text-sm transition-all duration-200 group-hover:max-w-[calc(100%-2.5rem)] ${
             active
               ? "bg-white/10 text-white border border-white/20"
               : "text-white/70 hover:bg-white/5 hover:text-white"
@@ -286,7 +286,7 @@ const ThreadRow = memo(
           title={thread.title}
         >
           <div className="flex items-center justify-between">
-            <div className="flex-1 truncate pr-2 flex items-center space-x-2">
+            <div className="flex-1 min-w-0 flex items-center space-x-2">
               {thread.is_pinned && (
                 <svg
                   width="12"
@@ -307,7 +307,7 @@ const ThreadRow = memo(
                   <Branch />
                 </div>
               )}
-              <span className="truncate">{thread.title}</span>
+              <span className="truncate min-w-0 select-none">{thread.title}</span>
             </div>
           </div>
         </ThreadLink>
@@ -319,16 +319,16 @@ const ThreadRow = memo(
             e.stopPropagation();
             setDeletingThread(thread);
           }}
-          className="w-0 opacity-0 group-hover:w-8 group-hover:opacity-100 transition-all duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300 overflow-hidden shrink-0"
+          className="w-0 h-10 opacity-0 group-hover:w-10 group-hover:opacity-100 transition-all duration-200 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300 overflow-hidden shrink-0 ml-0 group-hover:ml-1 flex items-center justify-center"
           title="Delete chat"
         >
           <svg
-            width="24"
-            height="24"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1"
             strokeLinecap="round"
             strokeLinejoin="round"
             className="shrink-0"
@@ -387,7 +387,7 @@ const ThreadLink = memo(
       <a
         href={disabled ? undefined : `/chat/${threadId}`}
         onClick={handleClick}
-        className={`${className} ${disabled ? "pointer-events-none" : ""}`}
+        className={className}
         title={title}
         aria-disabled={disabled}
       >
@@ -877,7 +877,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
             <div className="flex-1 flex flex-col min-h-0">
               <div className="flex-1 px-3 pb-20 overflow-hidden">
                 {filteredThreads.length > 0 ? (
-                  <div className="h-full overflow-y-auto custom-scrollbar-thin pr-3">
+                  <div className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar-thin pr-3">
                     <div className="space-y-1">
                       {/* Pinned Threads */}
                       {pinnedThreads.length > 0 && (
