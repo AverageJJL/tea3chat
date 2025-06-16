@@ -132,6 +132,7 @@ async function processAIAndCacheInBackground({
   modelConfig,
   messages,
   useWebSearch,
+  useDeepResearch,
   redisKey,
   timestamp,
 }: {
@@ -139,6 +140,7 @@ async function processAIAndCacheInBackground({
   modelConfig: any;
   messages: any[];
   useWebSearch: boolean;
+  useDeepResearch: boolean;
   redisKey: string;
   timestamp: string;
 }) {
@@ -152,7 +154,96 @@ async function processAIAndCacheInBackground({
 
     redis = await getRedisClient();
 
-    if (modelConfig.provider === "google") {
+    if (useDeepResearch) {
+      console.log(
+        `[${timestamp}] [BACKGROUND] Using Perplexity Sonar for key: ${redisKey}`
+      );
+
+      // Perplexity API only supports user and assistant roles, and a single system message.
+      const systemMessage =
+        messages.find((m: any) => m.role === "system")?.content ||
+        "Be precise and concise.";
+      let history = messages.filter((m: any) => m.role !== "system");
+
+      // Perplexity requires the last message to be from the user.
+      // If the last message is an empty assistant message (our placeholder), remove it.
+      if (history.length > 0) {
+        const lastMessage = history[history.length - 1];
+        if (lastMessage.role === 'assistant' && lastMessage.content === '') {
+            history.pop();
+        }
+      }
+
+      // Ensure content is always a string for the Perplexity API
+      const perplexityMessages = history.map((m: any) => ({
+        role: m.role,
+        content:
+          typeof m.content === "string"
+            ? m.content
+            : JSON.stringify(m.content),
+      }));
+
+      const response = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "sonar-deep-research",
+          messages: [
+            { role: "system", content: systemMessage },
+            ...perplexityMessages,
+          ],
+          search_mode: "web",
+          reasoning_effort: "low",
+          max_tokens: 800,
+          temperature: 0.2,
+          top_p: 0.9,
+          top_k: 0,
+          stream: true
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const errText = await response.text();
+        throw new Error(`Perplexity API error: ${response.status} ${errText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let streamFinished = false;
+      while (!streamFinished) {
+        const { done, value } = await reader.read();
+        if (done) break; // underlying connection closed
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+
+          const dataContent = line.substring(6).trim();
+          if (dataContent === "[DONE]") {
+            streamFinished = true; // break the outer loop on next check
+            break; // leave the inner loop immediately
+          }
+
+          try {
+            const json = JSON.parse(dataContent);
+            const text = json.choices?.[0]?.delta?.content || "";
+            if (text) {
+              finalContent += text;
+              const state = { status: "streaming", content: finalContent };
+              await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
+            }
+          } catch (e) {
+            console.warn("Failed to parse perplexity stream line", line, e);
+          }
+        }
+      }
+    } else if (modelConfig.provider === "google") {
       const geminiMessages = await Promise.all(
         messages.map(async (m: any) => {
           const role = m.role === "assistant" ? "model" : "user";
@@ -263,7 +354,7 @@ export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
   let redisKey: string | null = null;
   try {
-    const { messages, model, useWebSearch, assistantMessageId } =
+    const { messages, model, useWebSearch, useDeepResearch, assistantMessageId } =
       await req.json();
 
     console.log(
@@ -277,17 +368,21 @@ export async function POST(req: Request) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    if (!model) {
-      return new Response(
-        JSON.stringify({ error: "Model selection is required" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    const modelConfig = MODEL_PROVIDERS[model as keyof typeof MODEL_PROVIDERS];
-    if (!modelConfig) {
-      return new Response(JSON.stringify({ error: "Invalid model" }), {
-        status: 400,
-      });
+    let modelConfig: any = null;
+    if (!useDeepResearch) {
+      if (!model) {
+        return new Response(
+          JSON.stringify({ error: "Model selection is required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      modelConfig = MODEL_PROVIDERS[model as keyof typeof MODEL_PROVIDERS];
+      if (!modelConfig) {
+        return new Response(JSON.stringify({ error: "Invalid model" }), {
+          status: 400,
+        });
+      }
     }
     // Add other validations as needed...
 
@@ -309,6 +404,7 @@ export async function POST(req: Request) {
       modelConfig,
       messages,
       useWebSearch,
+      useDeepResearch,
       redisKey,
       timestamp,
     });
