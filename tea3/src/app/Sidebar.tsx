@@ -1,10 +1,28 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, memo, useMemo, useCallback } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
 import { createPortal } from "react-dom";
+import { Thread as ThreadType } from "./db";
+
+// Add this helper function at the top level
+const getRelativeTimeGroup = (date: Date): string => {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffDays = Math.round((todayStart.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) return "Today"; // For future-dated items if any
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays <= 7) return "Last 7 days";
+  if (diffDays <= 30) return "Last 30 days";
+  return "Older";
+};
 
 interface SidebarProps {
   userId: string;
@@ -17,12 +35,18 @@ const ContextMenu = ({
   onClose,
   onShare,
   onDelete,
+  onRename,
+  onPin,
+  isPinned,
 }: {
   x: number;
   y: number;
   onClose: () => void;
   onShare: () => void;
   onDelete: () => void;
+  onRename: () => void;
+  onPin: () => void;
+  isPinned: boolean;
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -39,12 +63,12 @@ const ContextMenu = ({
   const menu = (
     <div
       ref={menuRef}
-      className="fixed z-50 w-48 bg-gray-800/90 backdrop-blur-xl border border-gray-700/50 rounded-lg shadow-xl py-2"
+      className="fixed z-50 w-44 bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-lg shadow-xl py-1"
       style={{ top: y, left: x }}
     >
       <button
         onClick={onShare}
-        className="block w-full text-left px-4 py-2.5 text-sm text-white/90 hover:bg-white/10 hover:text-white transition-colors duration-150 flex items-center space-x-2"
+        className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-white/90 hover:bg-white/10 hover:text-white transition-colors"
       >
         <svg
           width="14"
@@ -62,9 +86,52 @@ const ContextMenu = ({
         </svg>
         <span>Share Chat</span>
       </button>
+      
+      <button
+        onClick={onRename}
+        className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-white/90 hover:bg-white/10 hover:text-white transition-colors"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+          <path d="m15 5 4 4"/>
+        </svg>
+        <span>Rename</span>
+      </button>
+      
+      <button
+        onClick={onPin}
+        className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-white/90 hover:bg-white/10 hover:text-white transition-colors"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="12" y1="17" x2="12" y2="22"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+        </svg>
+        <span>{isPinned ? "Unpin Chat" : "Pin Chat"}</span>
+      </button>
+      
+      <div className="my-1 h-px bg-gray-600/40"></div>
+      
       <button
         onClick={onDelete}
-        className="block w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors duration-150 flex items-center space-x-2"
+        className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
       >
         <svg
           width="14"
@@ -92,6 +159,234 @@ const ContextMenu = ({
   return null;
 };
 
+const DeleteConfirmationModal = ({
+  threadTitle,
+  onConfirm,
+  onCancel,
+}: {
+  threadTitle: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCancel]);
+  
+  const modalContent = (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in-0 duration-300"
+      onMouseDown={onCancel} // Close on clicking overlay
+    >
+      <div
+        className="bg-gray-800/90 border border-gray-700/50 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-in fade-in-0 zoom-in-95 duration-200"
+        onMouseDown={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+      >
+        <h2 className="text-lg font-bold text-white">Delete Chat</h2>
+        <p className="text-white/70 mt-2 text-sm">
+          Are you sure you want to delete "
+          <span className="font-medium text-white/90">{threadTitle}</span>"?
+          This action cannot be undone.
+        </p>
+        <div className="flex justify-end space-x-3 mt-6">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (typeof window !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+  return null;
+};
+
+// --- Memoized ThreadRow (outside Sidebar to avoid recreation) ---
+interface ThreadRowProps {
+  thread: ThreadType;
+  active: boolean;
+  isEditing: boolean;
+  editingTitle: string;
+  onChangeTitle: (v: string) => void;
+  onTitleKeyDown: (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    thread: ThreadType
+  ) => void;
+  onConfirmRename: (thread: ThreadType) => void;
+  onContextMenu: (
+    e: React.MouseEvent,
+    thread: ThreadType
+  ) => void;
+  setDeletingThread: (t: ThreadType) => void;
+  supabaseThreadId: string | undefined;
+}
+
+const ThreadRow = memo(
+  ({
+    thread,
+    active,
+    isEditing,
+    editingTitle,
+    onChangeTitle,
+    onTitleKeyDown,
+    onConfirmRename,
+    onContextMenu,
+    setDeletingThread,
+    supabaseThreadId,
+  }: ThreadRowProps) => {
+    if (isEditing) {
+      return (
+        <div key={thread.supabase_id} className="relative group p-1.5">
+          <input
+            type="text"
+            value={editingTitle}
+            onChange={(e) => onChangeTitle(e.target.value)}
+            onKeyDown={(e) => onTitleKeyDown(e, thread)}
+            onBlur={() => onConfirmRename(thread)}
+            autoFocus
+            className="w-full bg-white/10 text-white border border-white/20 rounded-lg text-sm px-3 py-2.5 focus:outline-none"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={thread.supabase_id}
+        className="relative group"
+        onContextMenu={(e) => onContextMenu(e, thread)}
+      >
+        <ThreadLink
+          threadId={thread.supabase_id!}
+          disabled={supabaseThreadId === thread.supabase_id?.toString()}
+          className={`block w-full px-3 py-3 rounded-lg text-sm transition-all duration-200 ${
+            active
+              ? "bg-white/10 text-white border border-white/20"
+              : "text-white/70 hover:bg-white/5 hover:text-white"
+          }`}
+          title={thread.title}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1 truncate pr-2 flex items-center space-x-2">
+              {thread.is_pinned && (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="text-white/70 shrink-0"
+                >
+                  <line x1="12" y1="17" x2="12" y2="22"></line>
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z" fill="currentColor"></path>
+                </svg>
+              )}
+              <span>{thread.title}</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDeletingThread(thread);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
+              title="Delete chat"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </ThreadLink>
+      </div>
+    );
+  },
+  (prev, next) => {
+    // Equality check: re-render only if relevant data changes.
+    const threadEqual =
+      prev.thread.title === next.thread.title &&
+      prev.thread.updatedAt.getTime() === next.thread.updatedAt.getTime() &&
+      prev.thread.is_pinned === next.thread.is_pinned;
+
+    return (
+      threadEqual &&
+      prev.active === next.active &&
+      prev.isEditing === next.isEditing &&
+      (prev.isEditing ? prev.editingTitle === next.editingTitle : true)
+    );
+  }
+);
+
+// Lightweight replacement for react-router Link that doesn't subscribe to location changes
+const ThreadLink = memo(
+  ({
+    threadId,
+    disabled,
+    children,
+    className,
+    title,
+  }: {
+    threadId: string;
+    disabled: boolean;
+    children: React.ReactNode;
+    className?: string;
+    title?: string;
+  }) => {
+    const navigate = useNavigate();
+    const handleClick = (e: React.MouseEvent) => {
+      if (disabled) {
+        // Stop the native link navigation if this thread is already active
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
+      navigate(`/chat/${threadId}`);
+    };
+    return (
+      <a
+        href={disabled ? undefined : `/chat/${threadId}`}
+        onClick={handleClick}
+        className={`${className} ${disabled ? "pointer-events-none" : ""}`}
+        title={title}
+        aria-disabled={disabled}
+      >
+        {children}
+      </a>
+    );
+  }
+);
+// --- end ThreadRow ---
+
 export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
   const navigate = useNavigate();
@@ -99,6 +394,10 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   // Sidebar collapsed / expanded state
   // Default to collapsed on mobile viewports (< 768px)
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [deletingThread, setDeletingThread] = useState<(typeof threads[number]) | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Detect viewport changes so the sidebar behaves responsively.
   // It collapses automatically on small screens and expands on larger ones
@@ -130,28 +429,43 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     x: number;
     y: number;
     threadId: string;
+    isPinned: boolean;
   } | null>(null);
 
   const threads = useLiveQuery(
     async () => {
       if (!userId) return [];
-      const userThreadsSortedAsc = await db.threads
+      const userThreads = await db.threads
         .where("userId")
         .equals(userId)
-        .sortBy("updatedAt");
-      return userThreadsSortedAsc.reverse();
+        .toArray();
+      
+      const pinnedThreads = userThreads.filter(t => t.is_pinned);
+      const unpinnedThreads = userThreads.filter(t => !t.is_pinned);
+
+      // Sort pinned threads by pinned_at DESC (most recent first)
+      pinnedThreads.sort((a, b) => (b.pinned_at?.getTime() || 0) - (a.pinned_at?.getTime() || 0));
+      // Sort unpinned threads by updatedAt DESC
+      unpinnedThreads.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+      return [...pinnedThreads, ...unpinnedThreads];
     },
     [userId],
     [],
   );
 
-  const handleContextMenu = (
-    e: React.MouseEvent,
-    threadSupabaseId: string,
-  ) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, threadId: threadSupabaseId });
-  };
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, thread: ThreadType) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        threadId: thread.supabase_id!,
+        isPinned: !!thread.is_pinned,
+      });
+    },
+    []
+  );
 
   const handleShareThread = async () => {
     if (!contextMenu) return;
@@ -209,6 +523,57 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
     }
   };
 
+  const handleRenameThread = async () => {
+    if (!contextMenu) return;
+    const { threadId } = contextMenu;
+    const thread = threads.find((t) => t.supabase_id === threadId);
+    if (!thread) return;
+
+    const newTitle = prompt("Enter new chat title:", thread.title);
+    if (newTitle && newTitle.trim() && newTitle.trim() !== thread.title) {
+      const updatedTitle = newTitle.trim();
+      const updatedAt = new Date();
+
+      await db.threads.update(thread.id!, { title: updatedTitle, updatedAt });
+
+      // Sync with supabase
+      try {
+        const threadForSync = await db.threads.get(thread.id!);
+        await fetch(`/api/sync/thread`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(threadForSync),
+        });
+      } catch (err) {
+        console.error("Failed to sync thread rename on Supabase:", err);
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handlePinThread = async () => {
+    if (!contextMenu) return;
+    const { threadId, isPinned } = contextMenu;
+    const thread = threads.find((t) => t.supabase_id === threadId);
+
+    if (thread && thread.id) {
+      if (!isPinned) {
+        // Pinning the thread
+        await db.threads.update(thread.id, {
+          is_pinned: true,
+          pinned_at: new Date(),
+        });
+      } else {
+        // Unpinning the thread
+        await db.threads.update(thread.id, {
+          is_pinned: false,
+          pinned_at: null,
+        });
+      }
+    }
+    setContextMenu(null);
+  };
+
   const toggleSidebar = React.useCallback(() => {
     setIsCollapsed((prev) => !prev);
   }, []);
@@ -235,9 +600,138 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
 
   const handleDeleteFromMenu = () => {
     if (!contextMenu) return;
-    handleDeleteThread(contextMenu.threadId);
+    const threadToDelete = threads.find(t => t.supabase_id === contextMenu.threadId);
+    if (threadToDelete) {
+      setDeletingThread(threadToDelete);
+    }
     setContextMenu(null);
   };
+
+  const handlePinFromMenu = () => {
+    if (!contextMenu) return;
+    handlePinThread();
+    setContextMenu(null);
+  };
+
+  const executeDelete = async () => {
+    if (!deletingThread) return;
+    const supabaseIdToDelete = deletingThread.supabase_id!;
+
+    // Remove messages for the thread locally
+    await db.messages
+      .where("thread_supabase_id")
+      .equals(supabaseIdToDelete)
+      .delete();
+
+    // Remove thread locally using the supabase_id index
+    await db.threads.where("supabase_id").equals(supabaseIdToDelete).delete();
+
+    // Remove from Supabase
+    try {
+      await fetch(`/api/sync/thread?supabase_id=${supabaseIdToDelete}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.error("Failed to delete thread on Supabase:", err);
+    }
+
+    // Navigate away if the deleted thread was open
+    if (supabaseThreadId === supabaseIdToDelete) {
+      navigate("/chat");
+    }
+    setDeletingThread(null);
+  };
+
+  const handleStartRename = () => {
+    if (!contextMenu) return;
+    const thread = threads.find((t) => t.supabase_id === contextMenu.threadId);
+    if (thread) {
+      setEditingThreadId(thread.supabase_id!);
+      setEditingTitle(thread.title);
+    }
+    setContextMenu(null);
+  };
+
+  const handleConfirmRename = async (thread: typeof threads[number]) => {
+    if (editingTitle.trim() && editingTitle.trim() !== thread.title) {
+      const updatedTitle = editingTitle.trim();
+      const updatedAt = new Date();
+
+      await db.threads.update(thread.id!, { title: updatedTitle, updatedAt });
+
+      // Sync with supabase
+      try {
+        const threadForSync = await db.threads.get(thread.id!);
+        await fetch(`/api/sync/thread`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(threadForSync),
+        });
+      } catch (err) {
+        console.error("Failed to sync thread rename on Supabase:", err);
+      }
+    }
+    setEditingThreadId(null);
+    setEditingTitle("");
+  };
+
+  const handleTitleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    thread: typeof threads[number]
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditingThreadId(null);
+      setEditingTitle("");
+    }
+  };
+
+  const filteredThreads = useMemo(() => {
+    return threads.filter((thread) =>
+      thread.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [threads, searchQuery]);
+
+  const pinnedThreads = useMemo(
+    () => filteredThreads.filter((t) => t.is_pinned),
+    [filteredThreads]
+  );
+
+  const unpinnedThreads = useMemo(
+    () => filteredThreads.filter((t) => !t.is_pinned),
+    [filteredThreads]
+  );
+
+  const groupedThreads = useMemo(() => {
+    return unpinnedThreads.reduce((acc: Record<string, ThreadType[]>, thread) => {
+      const group = getRelativeTimeGroup(thread.updatedAt);
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(thread);
+      return acc;
+    }, {});
+  }, [unpinnedThreads]);
+
+  // Define the order in which to display the groups.
+  const groupOrder = ["Today", "Yesterday", "Last 7 days", "Last 30 days", "Older"];
+
+  const renderThread = (thread: ThreadType) => (
+    <ThreadRow
+      key={thread.supabase_id}
+      thread={thread}
+      active={supabaseThreadId === thread.supabase_id?.toString()}
+      isEditing={editingThreadId === thread.supabase_id}
+      editingTitle={editingTitle}
+      onChangeTitle={setEditingTitle}
+      onTitleKeyDown={handleTitleKeyDown}
+      onConfirmRename={handleConfirmRename}
+      onContextMenu={handleContextMenu}
+      setDeletingThread={setDeletingThread}
+      supabaseThreadId={supabaseThreadId}
+    />
+  );
 
   if (!userId) {
     return (
@@ -269,13 +763,13 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
 
         <div
           className={`sidebar-glass flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
-            isCollapsed ? "w-0" : "w-64 md:w-72"
+            isCollapsed ? "w-0" : "w-80"
           }`}
         >
                   {!isCollapsed && (
           <div className="flex flex-col h-full">
-            <div className="p-6 pt-20 border-b border-gray-700/30">
-              <div className="w-full bg-gray-700/50 py-3 px-4 rounded-lg flex items-center justify-center">
+            <div className="p-6 pt-20 border-b border-gray-600/20">
+              <div className="w-full bg-gray-600/30 py-3 px-4 rounded-lg flex items-center justify-center">
                 <span className="text-white/70 text-sm">Loading...</span>
               </div>
             </div>
@@ -319,14 +813,14 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         </svg>
       </button>
       <div
-        className={`bg-gray-800/30 backdrop-blur-xl border-r border-gray-700/50 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
-          isCollapsed ? "w-0" : "w-72"
+        className={`bg-gray-700/40 backdrop-blur-xl border-r border-gray-600/30 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
+          isCollapsed ? "w-0" : "w-80"
         }`}
       >
         {!isCollapsed && (
           <div className="flex flex-col h-full">
             {/* Header section */}
-            <div className="p-6 pt-20 border-b border-gray-700/30">
+            <div className="p-6 pt-20 border-b border-gray-600/20">
               <button
                 onClick={onNewChat}
                 className="w-full bg-white hover:bg-gray-100 text-gray-900 font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
@@ -346,69 +840,60 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
                 <span>New Chat</span>
               </button>
             </div>
+            
+            {/* Search Bar */}
+            <div className="relative px-6 py-3">
+              <div className="absolute inset-y-0 left-9 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                name="search"
+                id="search"
+                className="block w-full bg-transparent py-2.5 pl-10 pr-3 text-white placeholder-gray-400 focus:outline-none transition-all sm:text-sm"
+                placeholder="Search your threads..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
 
             {/* Chats section */}
             <div className="flex-1 flex flex-col min-h-0">
-              <div className="px-6 py-4">
-                <h2 className="text-sm font-medium text-white/60 uppercase tracking-wide">
-                  Recent Chats
-                </h2>
-              </div>
-
-              <div className="flex-1 px-3 pb-24 overflow-hidden">
-                {threads && threads.length > 0 ? (
+              <div className="flex-1 px-3 pb-20 overflow-hidden">
+                {filteredThreads.length > 0 ? (
                   <div className="h-full overflow-y-auto custom-scrollbar-thin pr-3">
                     <div className="space-y-1">
-                      {threads.map((thread) => (
-                        <div
-                          key={thread.supabase_id}
-                          className="relative group"
-                          onContextMenu={(e) =>
-                            handleContextMenu(e, thread.supabase_id!)
-                          }
-                        >
-                          <Link
-                            to={`/chat/${thread.supabase_id}`}
-                            className={`block w-full px-3 py-3 rounded-lg text-sm transition-all duration-200 ${
-                              supabaseThreadId === thread.supabase_id?.toString()
-                                ? "bg-white/10 text-white border border-white/20"
-                                : "text-white/70 hover:bg-white/5 hover:text-white"
-                            }`}
-                            title={thread.title}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 truncate pr-2">
-                                {thread.title}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleDeleteThread(thread.supabase_id!);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-500/20 rounded text-red-400 hover:text-red-300"
-                                title="Delete chat"
-                              >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2" />
-                                  <line x1="10" y1="11" x2="10" y2="17" />
-                                  <line x1="14" y1="11" x2="14" y2="17" />
-                                </svg>
-                              </button>
-                            </div>
-                          </Link>
+                      {/* Pinned Threads */}
+                      {pinnedThreads.length > 0 && (
+                        <div className="mb-4">
+                          <h2 className="px-3 pt-4 pb-2 text-sm font-medium text-white/60 uppercase tracking-wide">
+                            Pinned
+                          </h2>
+                          <div className="space-y-1">
+                            {pinnedThreads.map(renderThread)}
+                          </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Grouped Unpinned Threads */}
+                      {groupOrder.map((group) => {
+                        const threadsInGroup = groupedThreads[group];
+                        if (!threadsInGroup || threadsInGroup.length === 0)
+                          return null;
+
+                        return (
+                          <div key={group} className="mb-4">
+                            <h2 className="px-3 pt-4 pb-2 text-sm font-medium text-white/60 uppercase tracking-wide">
+                              {group}
+                            </h2>
+                            <div className="space-y-1">
+                              {threadsInGroup.map(renderThread)}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -427,9 +912,11 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg>
                     </div>
-                    <p className="text-white/60 text-sm font-medium">No chats yet</p>
+                    <p className="text-white/60 text-sm font-medium">
+                      {searchQuery ? "No matching chats" : "No chats yet"}
+                    </p>
                     <p className="text-white/40 text-xs mt-1">
-                      Start a conversation to see your chats here
+                      {searchQuery ? "Try a different search term" : "Start a conversation to see your chats here"}
                     </p>
                   </div>
                 )}
@@ -437,36 +924,44 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
             </div>
 
             {/* Settings button at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-800/80 via-gray-800/60 to-transparent backdrop-blur-xl">
-              <button
-                onClick={handleSettingsClick}
-                className="w-full bg-gray-700/70 hover:bg-gray-700/90 text-white hover:text-white py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-3 border border-gray-600/40 shadow-lg hover:shadow-xl font-medium text-base"
+            <button
+              onClick={handleSettingsClick}
+              className="absolute bottom-4 left-4 right-4 bg-gray-600/50 hover:bg-gray-600/70 backdrop-blur-sm text-white hover:text-white py-8 px-6 rounded-xl transition-all duration-200 flex items-center justify-center space-x-3 border border-gray-500/30 shadow-lg hover:shadow-xl font-medium text-base"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span>Settings</span>
-              </button>
-            </div>
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <span>Settings</span>
+            </button>
 
             {/* Context menu */}
             {contextMenu && (
               <ContextMenu
                 x={contextMenu.x}
                 y={contextMenu.y}
+                isPinned={contextMenu.isPinned}
                 onClose={() => setContextMenu(null)}
                 onShare={handleShareThread}
                 onDelete={handleDeleteFromMenu}
+                onRename={handleStartRename}
+                onPin={handlePinFromMenu}
+              />
+            )}
+            {deletingThread && (
+              <DeleteConfirmationModal
+                threadTitle={deletingThread.title}
+                onConfirm={executeDelete}
+                onCancel={() => setDeletingThread(null)}
               />
             )}
           </div>

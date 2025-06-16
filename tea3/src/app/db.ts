@@ -8,6 +8,8 @@ export interface Thread {
   createdAt: Date;
   updatedAt: Date;
   forked_from_id?: string | null;
+  is_pinned?: boolean;
+  pinned_at?: Date | null;
 }
 
 export interface MessageAttachment { 
@@ -72,6 +74,14 @@ export class AppDB extends Dexie {
     }).upgrade(tx => {
       console.log("Upgrading database to version 6 for attachment mime_type support.");
       return tx.table("messages").toCollection().first().then(() => {});
+    });
+    this.version(7).stores({
+      threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, title",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    });
+    this.version(8).stores({
+      threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, pinned_at, title",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
     });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:

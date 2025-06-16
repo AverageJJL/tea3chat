@@ -142,13 +142,15 @@ async function processAIAndCacheInBackground({
   redisKey: string;
   timestamp: string;
 }) {
-  const redis = await getRedisClient();
+  let redis: Awaited<ReturnType<typeof getRedisClient>>;
   let finalContent = "";
 
   try {
     console.log(
       `[${timestamp}] [BACKGROUND] Starting AI processing for key: ${redisKey}`
     );
+
+    redis = await getRedisClient();
 
     if (modelConfig.provider === "google") {
       const geminiMessages = await Promise.all(
@@ -286,6 +288,10 @@ export async function POST(req: Request) {
     redisKey = `stream:${assistantMessageId}`;
 
     const redis = await getRedisClient();
+
+    // Quick health-check to ensure Redis is reachable (will throw if not)
+    await redis.ping();
+
     const initialState = { status: "streaming", content: "" };
     await redis.set(redisKey, JSON.stringify(initialState), { EX: 300 });
     
@@ -338,7 +344,37 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error: any) {
+    // Enhanced error handling for Redis connection issues
+    const isRedisConnErr = (err: any): boolean => {
+      if (!err) return false;
+      if (err.code === "ECONNREFUSED") return true;
+      if (typeof err.message === "string" && err.message.includes("ECONNREFUSED")) return true;
+      if (err instanceof AggregateError && Array.isArray(err.errors)) {
+        return err.errors.some((e: any) =>
+          e?.code === "ECONNREFUSED" ||
+          (typeof e?.message === "string" && e.message.includes("ECONNREFUSED"))
+        );
+      }
+      return false;
+    };
+
+    const redisConnError = isRedisConnErr(error);
+
+    // Log the error for server-side diagnostics
     console.error(`[${timestamp}] [POST CATCH-ALL] Error:`, error);
+
+    // If it's a Redis connectivity problem, surface a clearer message to the client
+    if (redisConnError) {
+      return new Response(
+        JSON.stringify({ error: "Service temporarily unavailable (Redis connection failed). Please try again later." }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Fallback: generic 500 for other errors
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
