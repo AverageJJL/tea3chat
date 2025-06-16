@@ -24,24 +24,20 @@ const getSupabaseClient = async (getToken: Function) => {
   }
 
   // Initialize the client with the anon key.
-  // The user-specific JWT will be used for requests via the global headers.
+  // The user-specific JWT will be used for requests via the global headers
   const options: SupabaseClientOptions<"public"> = {
     global: {
       headers: {
         Authorization: `Bearer ${supabaseToken}`,
       },
     },
-    // Optional: you can add auth options here if needed, e.g., persistSession
-    // auth: {
-    //   persistSession: false // Example: useful for server-side operations
-    // }
   };
   
   return createClient(supabaseUrl, supabaseAnonKey, options);
 };
 
 export async function POST(request: Request) {
-  const { userId, getToken } = await auth(); // Corrected: Added await
+  const { userId, getToken } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -61,6 +57,7 @@ export async function POST(request: Request) {
           title: threadData.title,
           created_at: threadData.createdAt,
           updated_at: threadData.updatedAt,
+          forked_from_id: threadData.forked_from_id,
         },
         {
           onConflict: "shared_id", // CONFLICT ON THE UNIVERSAL ID
@@ -198,7 +195,7 @@ export async function GET(request: Request) {
         )
       `)
       .eq('clerk_user_id', userId)
-      .order('created_at', { ascending: false }); // Order threads by their own created_at column
+      .order('created_at', { ascending: false }); 
 
     if (lastSyncTimestamp) {
       query = query.gt('updated_at', lastSyncTimestamp);

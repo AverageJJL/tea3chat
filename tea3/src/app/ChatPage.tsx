@@ -1,7 +1,6 @@
 // ChatPage.tsx
 "use client";
 
-import { scan } from "react-scan";
 import React, { useState, useEffect, useRef} from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
@@ -15,60 +14,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-// import { SendHorizonal, Paperclip, XSquare, Loader2 } from 'lucide-react'; // Assuming lucide-react for icons
-
-scan({
-  enabled: true,
-  log: false,
-  showToolbar: true,
-  animationSpeed: 'fast',
-  trackUnnecessaryRenders: true,
-})
-
-// SVG Icon components
-const SendHorizonal = React.memo(() => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-  </svg>
-));
-const Paperclip = React.memo(() => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-));
-const XSquare = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 6L6 18M6 6l12 12"/>
-  </svg>
-);
-const Loader2 = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 12a9 9 0 11-6.219-8.56"/>
-  </svg>
-);
-const Pencil = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-  </svg>
-);
-const Recycle = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-    <path d="M21 3v5h-5"/>
-    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-    <path d="M8 16H3v5"/>
-  </svg>
-);
+import { Branch, XSquare, Loader2, Pencil, Recycle, Paperclip, SendHorizonal} from "./components/Icons";
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
 
@@ -78,7 +24,7 @@ interface FullThreadSyncPayload {
   attachmentsData: {
     localMessageId: number;
     file_name: string;
-    file_url: string; // CRITICAL: This MUST be the Supabase Storage URL
+    file_url: string; 
   }[];
 }
 
@@ -100,12 +46,11 @@ interface SupabaseMessage {
   model?: string;
   created_at: string;
   attachments: SupabaseAttachment[];
-  // dexie_id?: number | null; // If you decide to send local message ID to backend and get it back
 }
 
 interface SupabaseThread {
   id: string;
-  shared_id: string; // This is the universal ID used across both Dexie and Supabase
+  shared_id: string; // this is the universal ID used across both Dexie and Supabase
   dexie_id: number | null;
   clerk_user_id: string;
   title: string;
@@ -232,16 +177,10 @@ async function fetchAndStoreCloudData() {
 
       await db.transaction("rw", db.threads, db.messages, async () => {
         for (const remoteThread of supabaseThreads) {
-          // let localThreadId: number | undefined;
 
           const threadSupabaseId = remoteThread.shared_id;
 
-          // const existingLocalThread = await db.threads
-          //   .where("supabase_id")
-          //   .equals(threadSupabaseId)
-          //   .first();
-
-          // if (!existingLocalThread) {
+        
           const threadPayloadToStore: Omit<Thread, "id"> = {
             supabase_id: threadSupabaseId,
             userId: remoteThread.clerk_user_id,
@@ -251,18 +190,12 @@ async function fetchAndStoreCloudData() {
           };
 
           await db.threads.put(threadPayloadToStore);
-          //}
+
 
           for (const remoteMessage of remoteThread.messages) {
             const messageSupabaseId = (remoteMessage as any).shared_id;
             if (!messageSupabaseId) continue;
 
-            // const existingLocalMessage = await db.messages
-            //   .where("supabase_id")
-            //   .equals(messageSupabaseId)
-            //   .first();
-
-            // if (!existingLocalMessage) {
             const localMessagePayload: Message = {
               supabase_id: messageSupabaseId,
               thread_supabase_id: threadSupabaseId, // Link using the universal ID
@@ -276,10 +209,9 @@ async function fetchAndStoreCloudData() {
               createdAt: new Date(remoteMessage.created_at),
               model: remoteMessage.model,
             };
-            // Use .put() for messages as well.
+            
             await db.messages.put(localMessagePayload);
           }
-          //}
         }
       });
     } else if (!cloudFetchResult.success) {
@@ -290,7 +222,6 @@ async function fetchAndStoreCloudData() {
   }
 }
 
-// Add this helper function inside ChatPage.tsx
 async function syncThreadWithAttachments(supabaseThreadId: string) {
   const threadData = await db.threads
     .where("supabase_id")
@@ -339,7 +270,7 @@ async function syncThreadWithAttachments(supabaseThreadId: string) {
     });
   } catch (syncError) {
     console.error(`Sync failed for thread ${supabaseThreadId}:`, syncError);
-    // Optionally set an error state for the UI
+    
   }
 }
 
@@ -358,14 +289,15 @@ const MessageRow = React.memo(
     availableModels,
     onEdit,
     onRegenerate,
+    onBranch
   }: {
     message: Message;
     availableModels: { value: string; displayName: string }[];
     onEdit: (m: Message) => void;
     onRegenerate: (m: Message) => void;
+    onBranch: (m: Message) => void;
   }) {
     // No hover state; CSS handles visibility via group-hover
-    const [isCopied, setIsCopied] = React.useState(false);
 
     // Callbacks are stable via useCallback
     const handleCopy = React.useCallback(() => {
@@ -381,74 +313,6 @@ const MessageRow = React.memo(
     // Determine role
     const isAssistant = message.role === "assistant";
 
-    // Create a custom code component to handle syntax highlighting
-    const CodeBlock = React.useCallback(({ inline, className, children, ...rest }: any) => {
-      const [codeIsCopied, setCodeIsCopied] = React.useState(false);
-      const match = /language-(\w+)/.exec(className || "");
-      
-      const handleCodeCopy = React.useCallback(async () => {
-        try {
-          await navigator.clipboard.writeText(String(children));
-          setCodeIsCopied(true);
-          setTimeout(() => setCodeIsCopied(false), 2000);
-        } catch (err) {
-          console.error("Failed to copy code:", err);
-        }
-      }, [children]);
-      
-      return !inline && match ? (
-        <div className="code-block-container group">
-          <div className="code-block-header">
-            <span className="code-block-language">
-              {match[1]}
-            </span>
-            <button
-              onClick={handleCodeCopy}
-              className="code-block-copy-btn"
-              title={codeIsCopied ? "Copied!" : "Copy code"}
-            >
-              {codeIsCopied ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <div className="code-block-content">
-            <SyntaxHighlighter
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore – style typing mismatch
-              style={vscDarkPlus as any}
-              language={match[1]}
-              PreTag="div"
-              showLineNumbers={false}
-              wrapLines={false}
-              customStyle={{
-                margin: 0,
-                padding: '20px 24px',
-                background: 'transparent',
-                fontSize: '15px',
-                lineHeight: '1.8',
-                letterSpacing: '0.025em',
-              }}
-              {...(rest as any)}
-            >
-              {String(children).replace(/\n$/, "")}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-      ) : (
-        <code className={className} {...(rest as any)}>
-          {children}
-        </code>
-      );
-    }, []);
-
     // Memoise heavy Markdown render
     const markdownBody = React.useMemo(() => {
       if (!isAssistant) return null;
@@ -456,14 +320,13 @@ const MessageRow = React.memo(
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
-          components={{
-            code: CodeBlock,
-          }}
         >
           {message.content}
         </ReactMarkdown>
       );
-    }, [isAssistant, message.content, CodeBlock]);
+    }, [isAssistant, message.content]);
+
+    const [isCopied, setIsCopied] = React.useState(false);
 
     return (
       <div
@@ -472,7 +335,7 @@ const MessageRow = React.memo(
         } mb-12`}
       >
         {isAssistant ? (
-          <div className="max-w-4xl w-full relative pb-8">
+          <div className="max-w-4xl relative pb-8">
             {/* Header: model name + timestamp */}
             <div className="flex items-center mb-3">
               <div className="flex items-center space-x-2">
@@ -486,7 +349,7 @@ const MessageRow = React.memo(
               </div>
             </div>
             {/* Markdown body */}
-            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg message-markdown">
+            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
               {markdownBody}
             </div>
             {/* Action buttons; visible on hover via CSS */}
@@ -510,6 +373,14 @@ const MessageRow = React.memo(
                 className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
               >
                 <Recycle />
+              </button>
+              <button
+                type="button"
+                onClick={() => onBranch(message)}
+                className="p-1.5 text-white/50 hover:text-white/80 hover:bg-white/10 rounded-md transition-colors"
+                title="Branch from this point"
+              >
+                <Branch />
               </button>
             </div>
           </div>
@@ -836,7 +707,6 @@ export default function ChatPage() {
   // --- ACTIONS ---
   // Creation of a brand-new chat is now handled by the persistent AppShell/Sidebar.
 
-  // Moved buildHistoryForAI before handleSubmit to resolve declaration error
   const buildHistoryForAI = (
     msgs: Message[],
     modelSupportsImagesFlag: boolean
@@ -1013,7 +883,7 @@ Present code in Markdown code blocks with the correct language extension indicat
           }
           assistantLocalMessageId = assistantMessageToUpdate.id;
 
-          // Clear the editing state *before* the API call.
+          // Clear the editing state before the API call.
           setEditingMessage(null);
           setInput("");
           setAttachedFiles([]);
@@ -1065,18 +935,12 @@ Present code in Markdown code blocks with the correct language extension indicat
         setIsSending(false);
         // Always sync the thread after an edit operation completes or fails.
         if (editingMessage?.thread_supabase_id) {
-          // const finalThreadData = await db.threads.get({
-          //   supabase_id: ,
-          // });
+       
           const finalThreadData = await db.threads
             .where("supabase_id")
             .equals(editingMessage.thread_supabase_id)
             .first();
 
-          // const finalMessagesData = await db.messages
-          //   .where("thread_supabase_id")
-          //   .equals(editingMessage.thread_supabase_id)
-          //   .toArray();
           if (finalThreadData) {
             try {
               // Get the edited user message and the new assistant message
@@ -1086,14 +950,6 @@ Present code in Markdown code blocks with the correct language extension indicat
               const newAssistantMessage = assistantLocalMessageId
                 ? await db.messages.get(assistantLocalMessageId)
                 : null;
-
-              // const messagesToSync = [];
-              // if (editedUserMessage) messagesToSync.push(editedUserMessage);
-              // if (newAssistantMessage) messagesToSync.push(newAssistantMessage);
-
-              // if (messagesToSync.length > 0) {
-              //   await syncMessagesToBackend(messagesToSync);
-              // }
 
               const updatedAssistantMessage = assistantMessageToUpdate?.id
                 ? await db.messages.get(assistantMessageToUpdate.id)
@@ -1106,7 +962,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               await syncEditOperationToBackend({
                 threadSupabaseId: editingMessage.thread_supabase_id,
                 messagesToUpsert,
-                idsToDelete: idsToDelete, // Pass the list of IDs to delete
+                idsToDelete: idsToDelete, 
               });
             } catch (syncError) {
               console.error(
@@ -1491,6 +1347,117 @@ Present code in Markdown code blocks with the correct language extension indicat
     }
   }, [messages, selectedModel, availableModels, useWebSearch, isSending]); // End of handleRegenerate
 
+  const handleBranch = React.useCallback(
+    async (messageToBranchFrom: Message) => {
+      if (!user || !user.id || isSending) return;
+
+      setIsSending(true);
+      setError(null);
+
+      try {
+        const originalThreadId = messageToBranchFrom.thread_supabase_id;
+        if (!originalThreadId) {
+          throw new Error("Cannot branch from a message without a thread ID.");
+        }
+
+        // 1. Get all original messages from Dexie up to the branch point
+        const allOriginalMessages = await db.messages
+          .where("thread_supabase_id")
+          .equals(originalThreadId)
+          .sortBy("createdAt");
+
+        const branchIndex = allOriginalMessages.findIndex(
+          (m) => m.id === messageToBranchFrom.id
+        );
+        if (branchIndex === -1) {
+          throw new Error(
+            "Could not find the branching message in the database."
+          );
+        }
+        const messagesToCopy = allOriginalMessages.slice(0, branchIndex + 1);
+
+        // 2. Create the new forked thread locally
+        const originalThreadData = await db.threads
+          .where("supabase_id")
+          .equals(originalThreadId)
+          .first();
+        const newThreadSupabaseId = uuidv4();
+        const newThreadData: Thread = {
+          supabase_id: newThreadSupabaseId,
+          userId: user.id,
+          title: `${originalThreadData?.title || "New Chat"}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          forked_from_id: originalThreadId,
+        };
+        await db.threads.add(newThreadData);
+
+        // 3. Create new message objects for the new thread
+        const newMessagesData = messagesToCopy.map((msg) => {
+          const { id, ...rest } = msg; // Strip local Dexie 'id'
+          return {
+            ...rest,
+            supabase_id: uuidv4(), // CRITICAL: New universal ID for the copied message
+            thread_supabase_id: newThreadSupabaseId, // Link to the new thread
+          };
+        });
+
+        // 4. Add new messages to Dexie
+        await db.messages.bulkAdd(newMessagesData);
+
+        // 5. Sync the entire new thread to the backend
+        const newThreadForSync = await db.threads
+          .where("supabase_id")
+          .equals(newThreadSupabaseId)
+          .first();
+        const newMessagesForSync = await db.messages
+          .where("thread_supabase_id")
+          .equals(newThreadSupabaseId)
+          .toArray();
+
+        if (!newThreadForSync) {
+          throw new Error("Failed to retrieve newly created thread for sync.");
+        }
+
+        const attachmentsData: {
+          localMessageId: number;
+          file_name: string;
+          file_url: string;
+        }[] = [];
+        for (const msg of newMessagesForSync) {
+          if (msg.id && msg.attachments) {
+            for (const att of msg.attachments) {
+              if (att.file_name && att.file_url) {
+                attachmentsData.push({
+                  localMessageId: msg.id,
+                  file_name: att.file_name,
+                  file_url: att.file_url,
+                });
+              }
+            }
+          }
+        }
+
+        await syncFullThreadToBackend({
+          threadData: newThreadForSync,
+          messagesData: newMessagesForSync,
+          attachmentsData,
+        });
+
+        // 6. Navigate to the new thread
+        navigate(`/chat/${newThreadSupabaseId}`);
+      } catch (err: any) {
+        console.error("Failed to create branch:", err);
+        setError(
+          err.message || "An unexpected error occurred while branching."
+        );
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [user, isSending, navigate]
+  );
+
   // Helper function to process a File object (used by both file input and drag&drop)
   const processFiles = (files: File[]) => {
     setAttachedFiles((prev) => [...prev, ...files]);
@@ -1621,6 +1588,7 @@ Present code in Markdown code blocks with the correct language extension indicat
               availableModels={availableModels}
               onEdit={handleEditMessage}
               onRegenerate={handleRegenerate}
+              onBranch={handleBranch}
             />
           ))}
           <div ref={messagesEndRef} /> {/* For scrolling to bottom */}

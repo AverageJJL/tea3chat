@@ -3,11 +3,11 @@
 import React, { useState, useRef, useEffect, memo, useMemo, useCallback } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "./db";
+import { db } from "../db";
 import { createPortal } from "react-dom";
-import { Thread as ThreadType } from "./db";
+import { Thread as ThreadType } from "../db";
+import { Branch } from "./Icons";
 
-// Add this helper function at the top level
 const getRelativeTimeGroup = (date: Date): string => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -297,6 +297,14 @@ const ThreadRow = memo(
                   <line x1="12" y1="17" x2="12" y2="22"></line>
                   <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z" fill="currentColor"></path>
                 </svg>
+              )}
+              {thread.forked_from_id && (
+                <div
+                  title="This is a branched chat"
+                  className="text-white/70 shrink-0"
+                >
+                  <Branch />
+                </div>
               )}
               <span>{thread.title}</span>
             </div>

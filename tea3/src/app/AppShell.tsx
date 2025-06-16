@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
-import Sidebar from "./Sidebar";
+import Sidebar from "./components/Sidebar";
 
 interface AiModel {
   value: string;
