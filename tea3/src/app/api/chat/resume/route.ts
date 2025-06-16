@@ -29,12 +29,15 @@ export async function GET(request: Request) {
       console.log(
         `[${timestamp}] [RESUME] Found key ${redisKey}. Status: streaming. Content length: ${content.length}`
       );
-      return NextResponse.json({ status: "streaming", content });
+      // return NextResponse.json({ status: "streaming", content });
+      // Key exists, return the full state object
+      return NextResponse.json(JSON.parse(content.toLocaleString()));
     } else {
       console.log(
         `[${timestamp}] [RESUME] Key ${redisKey} not found. Status: complete.`
       );
-      return NextResponse.json({ status: "complete" });
+      // return NextResponse.json({ status: "complete" });
+      return NextResponse.json({ status: "expired" });
     }
   } catch (error) {
     console.error(`[${timestamp}] [RESUME] API error:`, error);

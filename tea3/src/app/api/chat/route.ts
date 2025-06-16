@@ -208,8 +208,10 @@ async function processAIAndCacheInBackground({
         if (text) {
           finalContent += text;
           console.log( `[${timestamp}] [CHAT] Gemini chunk received: "${text}"`);
-          await redis.append(redisKey, text);
-          await redis.expire(redisKey, 300);
+          // await redis.append(redisKey, text);
+          // await redis.expire(redisKey, 300);
+          const state = { status: "streaming", content: finalContent };
+          await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
         }
       }
     } else {
@@ -220,8 +222,8 @@ async function processAIAndCacheInBackground({
       });
       for await (const text of streamResult.textStream) {
         finalContent += text;
-        await redis.append(redisKey, text);
-        await redis.expire(redisKey, 300);
+        const state = { status: "streaming", content: finalContent };
+        await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
       }
     }
     console.log(
@@ -232,7 +234,7 @@ async function processAIAndCacheInBackground({
       `[${timestamp}] [BACKGROUND] Error during AI processing for key ${redisKey}:`,
       error
     );
-    await redis.set(redisKey, `Error: Generation failed.`, { EX: 60 });
+    finalContent = `Error: Generation failed.`;
   } finally {
     
     // console.log(
@@ -242,13 +244,15 @@ async function processAIAndCacheInBackground({
     console.log(
       `[${timestamp}] [BACKGROUND] Task complete. Setting final content for key ${redisKey} with 60s TTL.`
     );
-    await redis.set(redisKey, finalContent, { EX: 60 });
+    const finalState = { status: "complete", content: finalContent };
+    await redis.set(redisKey, JSON.stringify(finalState), { EX: 60 });
   }
 }
 
 // --- API ROUTE HANDLERS ---
 export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
+  let redisKey: string | null = null;
   try {
     const { messages, model, useWebSearch, assistantMessageId } =
       await req.json();
@@ -278,12 +282,13 @@ export async function POST(req: Request) {
     }
     // Add other validations as needed...
 
+    if (!assistantMessageId) throw new Error("assistantMessageId is required.");
+    redisKey = `stream:${assistantMessageId}`;
+
     const redis = await getRedisClient();
-    const redisKey = `stream:${assistantMessageId}`;
-
-    // Initialize the key for the stream
-    await redis.set(redisKey, "", { EX: 300 });
-
+    const initialState = { status: "streaming", content: "" };
+    await redis.set(redisKey, JSON.stringify(initialState), { EX: 300 });
+    
     // --- DECOUPLING ---
     // Start the background processing but DO NOT await it.
     processAIAndCacheInBackground({
@@ -296,33 +301,29 @@ export async function POST(req: Request) {
     });
 
     // --- CLIENT-FACING STREAM ---
-    // This stream polls Redis and sends updates to the client.
+    // This stream polls Redis and sends updates to the client
     const clientStream = new ReadableStream({
       async start(controller) {
         let lastContentSent = "";
-        let loop = true;
         const encoder = new TextEncoder();
 
-        while (loop) {
-          const currentContent = await redis.get(redisKey);
+        while (true) {
+          const rawState = await redis.get(redisKey);
+          if (rawState === null) break; // Key expired or deleted, we're done.
 
-          if (currentContent === null) {
-            console.log(
-              `[${timestamp}] [CLIENT STREAM] Redis key ${redisKey} deleted. Closing stream.`
-            );
-            loop = false;
-            break;
-          }
-
-          if (currentContent.length > lastContentSent.length) {
-            const newChunk = currentContent.toLocaleString().substring(lastContentSent.length);
+          const state = JSON.parse(rawState.toLocaleString());
+          if (state.content.length > lastContentSent.length) {
+            const newChunk = state.content.substring(lastContentSent.length);
             controller.enqueue(
               encoder.encode(`0:${JSON.stringify(newChunk)}\n`)
             );
-            lastContentSent = currentContent.toLocaleString();
+            lastContentSent = state.content;
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          // if the background task marked it as complete, we stop streaming.
+          if (state.status === "complete") break;
+
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
         controller.close();
       },

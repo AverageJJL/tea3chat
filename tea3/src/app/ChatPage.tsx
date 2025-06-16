@@ -1,7 +1,7 @@
 // ChatPage.tsx
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef} from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -375,6 +375,8 @@ export default function ChatPage() {
   // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
   const baseTextareaHeightRef = useRef<number>(0);
 
+  const isSubmittingRef = useRef(false);
+
   // Auto-clear error after 3 seconds
   useEffect(() => {
     if (error) {
@@ -570,43 +572,35 @@ export default function ChatPage() {
               `/api/chat/resume?id=${assistantMessageId}`
             );
             if (!response.ok) throw new Error("Resume API request failed");
-            const data = await response.json();
+            const data = await response.json(); // data is now { status, content } or { status: 'expired' }
 
-            if (data.status === "streaming") {
+            if (data.content) {
               await db.messages.update(messageToResume.id!, {
                 content: data.content,
               });
-
-              if (data.content.length === lastContentLength) {
-                stablePolls++;
-              } else {
-                stablePolls = 0;
-                lastContentLength = data.content.length;
-              }
-
-              // If content is stable for 2 polls, it's finished.
-              if (stablePolls >= 2) {
-                console.log(`[FE] Content is stable. Finalizing.`);
-                cleanup(true);
-                break;
-              }
-              await new Promise((resolve) => setTimeout(resolve, pollInterval));
-            } else if (data.status === "complete") {
-              console.log(`[FE] Status is 'complete' (key expired). Finalizing.`);
-              cleanup(true);
-              break;
             }
+
+            if (data.status === "complete" || data.status === "expired") {
+              console.log(`[FE] Received final status: "${data.status}". Finalizing.`);
+              cleanup(true); // Final update is done, now cleanup and sync.
+              break; // Exit the polling loop
+            }
+
+            // If still streaming, wait and poll again
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+             
           } catch (error) {
             console.error(`[FE] Error during poll:`, error);
             cleanup(false); // Cleanup without sync on error
             break;
           }
-        }
+        } 
       })();
   };
 
     const inFlightId = sessionStorage.getItem("inFlightAssistantMessageId");
-    if (inFlightId) {
+
+    if (inFlightId && !isSubmittingRef.current) {
       resumeStream(inFlightId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -910,6 +904,8 @@ Present code in Markdown code blocks with the correct language extension indicat
       return; 
     }
 
+    isSubmittingRef.current = true;
+
     // --- Block 2: Handle New Message Submission ---
     let currentSupabaseThreadId = supabaseThreadId;
     let assistantLocalMessageId: number | null = null;
@@ -1079,6 +1075,8 @@ Present code in Markdown code blocks with the correct language extension indicat
     } finally {
       setIsSending(false);
       sessionStorage.removeItem("inFlightAssistantMessageId");
+      isSubmittingRef.current = false;
+      
       // Sync after the operation completes or fails.
       if (currentSupabaseThreadId) {
         try {
