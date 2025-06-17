@@ -12,6 +12,15 @@ export interface Thread {
   pinned_at?: Date | null;
 }
 
+export interface UserPreferences {
+  id?: number;
+  userId: string;
+  name?: string;
+  role?: string;
+  traits?: string[];
+  customInstructions?: string;
+}
+
 export interface MessageAttachment { 
  
   supabase_id?: string | null; 
@@ -36,6 +45,7 @@ export interface Message {
 export class AppDB extends Dexie {
   threads!: Table<Thread>;
   messages!: Table<Message>;
+  userPreferences!: Table<UserPreferences>;
 
   constructor() {
     super("AppDB");
@@ -82,6 +92,11 @@ export class AppDB extends Dexie {
     this.version(8).stores({
       threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, pinned_at, title",
       messages: "++id, supabase_id, thread_supabase_id, createdAt",
+    });
+    this.version(9).stores({
+      threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, pinned_at, title",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+      userPreferences: "++id, &userId",
     });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:
