@@ -19,11 +19,9 @@ export interface ModelProvider {
 import groq from './groq';
 import openrouter from './openrouter';
 import gemini from './gemini';
-import perplexity from './perplexity';
 
 export const PROVIDERS: Record<string, ModelProvider> = {
   groq,
   openrouter,
   gemini,
-  perplexity,
 };

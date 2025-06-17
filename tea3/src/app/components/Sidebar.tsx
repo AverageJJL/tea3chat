@@ -753,7 +753,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         {/* Toggle button - positioned fixed when collapsed */}
         <button
           onClick={toggleSidebar}
-         className={`glass-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
+         className={`frosted-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
             isCollapsed ? "fixed top-4 left-4" : "absolute top-4 left-4"
           }`}
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -776,8 +776,8 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         </button>
 
         <div
-          className={`sidebar-glass flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
-            isCollapsed ? "w-0" : "w-80"
+          className={`frosted-sidebar flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
+            isCollapsed ? "w-0" : "w-68"
           }`}
         >
                   {!isCollapsed && (
@@ -805,7 +805,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
       {/* Toggle button - positioned fixed when collapsed */}
       <button
         onClick={toggleSidebar}
-        className={`glass-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
+        className={`frosted-button-sidebar w-8 h-8 flex items-center justify-center text-white rounded-lg hover:shadow-lg transition-all duration-300 shrink-0 z-50 ${
           isCollapsed ? "fixed top-4 left-4" : "absolute top-4 left-4"
         }`}
         title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -828,7 +828,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
       </button>
       <div
         className={`bg-gray-700/40 backdrop-blur-xl border-r border-gray-600/30 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
-          isCollapsed ? "w-0" : "w-80"
+          isCollapsed ? "w-0" : "w-68"
         }`}
       >
         {!isCollapsed && (
