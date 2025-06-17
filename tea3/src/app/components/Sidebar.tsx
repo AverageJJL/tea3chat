@@ -272,46 +272,45 @@ const ThreadRow = memo(
     return (
       <div
         key={thread.supabase_id}
-        className="relative group flex items-center"
+        className="relative group flex items-center w-full"
         onContextMenu={(e) => onContextMenu(e, thread)}
       >
         <ThreadLink
           threadId={thread.supabase_id!}
           disabled={supabaseThreadId === thread.supabase_id?.toString()}
-          className={`flex-1 block px-3 py-3 rounded-lg text-sm transition-all duration-200 group-hover:max-w-[calc(100%-2.5rem)] ${
+          className={`flex flex-1 items-center min-w-0 px-3 py-3 rounded-lg text-sm transition-all duration-200 group-hover:max-w-[calc(100%-2.75rem)] ${
             active
               ? "bg-white/10 text-white border border-white/20"
               : "text-white/70 hover:bg-white/5 hover:text-white"
           }`}
           title={thread.title}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0 flex items-center space-x-2">
-              {thread.is_pinned && (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="text-white/70 shrink-0"
-                >
-                  <line x1="12" y1="17" x2="12" y2="22"></line>
-                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z" fill="currentColor"></path>
-                </svg>
-              )}
-              {thread.forked_from_id && (
-                <div
-                  title="This is a branched chat"
-                  className="text-white/70 shrink-0"
-                >
-                  <Branch />
-                </div>
-              )}
-              <span className="truncate min-w-0 select-none">{thread.title}</span>
+          {thread.is_pinned && (
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="text-white/70 shrink-0 mr-2"
+            >
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path
+                d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"
+                fill="currentColor"
+              ></path>
+            </svg>
+          )}
+          {thread.forked_from_id && (
+            <div
+              title="This is a branched chat"
+              className="text-white/70 shrink-0 mr-2"
+            >
+              <Branch />
             </div>
-          </div>
+          )}
+          <span className="truncate select-none">{thread.title}</span>
         </ThreadLink>
-        
+
         <button
           type="button"
           onClick={(e) => {
@@ -333,9 +332,9 @@ const ThreadRow = memo(
             strokeLinejoin="round"
             className="shrink-0"
           >
-            <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
-            <line x1="10" y1="11" x2="10" y2="17"/>
-            <line x1="14" y1="11" x2="14" y2="17"/>
+            <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
           </svg>
         </button>
       </div>
@@ -396,7 +395,6 @@ const ThreadLink = memo(
     );
   }
 );
-// --- end ThreadRow ---
 
 export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const { supabaseThreadId } = useParams<{ supabaseThreadId?: string }>();
