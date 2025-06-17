@@ -1678,7 +1678,9 @@ useEffect(() => {
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">          
            
             <LiquidGlass className="rounded-2xl p-4 shadow-2xl flex flex-col">
-              {editingMessage && (
+              
+              <LiquidGlass.Foreground>
+                {editingMessage && (
                 <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
@@ -1695,8 +1697,7 @@ useEffect(() => {
                   </button>
                 </div>
               )}
-
-              <textarea
+                <textarea
                 ref={textareaRef}
                 className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
                 value={input}
@@ -1912,6 +1913,8 @@ useEffect(() => {
                   )}
                 </button>
               </div>
+              </LiquidGlass.Foreground>
+              
             </LiquidGlass>
             
           </form>

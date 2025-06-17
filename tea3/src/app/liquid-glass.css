@@ -1,21 +1,17 @@
 /* Base liquid glass effect */
 .liquid-glass {
   position: relative;
-  border-radius: var(--glass-radius, 16px);
-  /* overflow: hidden is crucial for border-radius to apply to children */
+  border-radius: var(--glass-radius, 24px);
   overflow: hidden;
-  isolation: isolate; /* Creates a new stacking context */
+  isolation: isolate;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
-
-  /* Define the dimensions of our effect zones */
-  --border-width: 2px; /* Total width of the effect from the edge */
-  --transition-width: 2px; /* The width of the outermost, strongest distortion zone */
+  --border-width: 5px;
+  --mask-border-size: 25px;
 }
 
 /*
-  LAYER 1 (BOTTOM): Strongest distortion.
-  This covers the entire element and acts as our base distortion layer.
+  LAYER 1 (BOTTOM): Distorts the PAGE BACKGROUND.
 */
 .liquid-glass::before {
   content: "";
@@ -23,65 +19,80 @@
   inset: 0;
   border-radius: inherit;
   z-index: 1;
-
-  /* Apply the strongest distortion filter to the backdrop */
-  backdrop-filter: blur(3px);
-  filter: url(#border-glass-distortion);
+  backdrop-filter: blur(1px);
+  pointer-events: none;
 }
 
 /*
-  LAYER 2 (MIDDLE): Weaker transition distortion.
-  This is inset slightly and sits on top of the base layer,
-  replacing the strong distortion with a weaker one.
+  LAYER 2: The background content (text) that will be distorted.
 */
-.liquid-glass .liquid-glass-transition {
-  position: absolute;
-  /* Inset by the width of the outer distortion zone */
-  inset: var(--transition-width);
-  border-radius: calc(var(--glass-radius, 16px) - var(--transition-width));
-  z-index: 2;
-
-  /* Apply the weaker transition filter. This renders on top of the ::before layer's backdrop */
-  backdrop-filter: blur(2px);
-  filter: url(#transition-glass-distortion);
+.liquid-glass-background-content {
+    position: absolute;
+    z-index: 2;
 }
 
 /*
-  LAYER 3 (TOP): The clean, undistorted center.
-  This is inset fully and sits on top of all other layers.
-  It has NO SVG distortion, creating the clean rectangle in the middle.
+  LAYER 3 (MIDDLE): The distortion layer.
+  It sits ON TOP of the background content, distorting it.
 */
 .liquid-glass::after {
   content: "";
   position: absolute;
-  /* Inset by the total width of the border effect */
-  inset: var(--border-width);
-  border-radius: calc(var(--glass-radius, 16px) - var(--border-width));
+  inset: 0;
+  border-radius: inherit;
   z-index: 3;
+  pointer-events: none;
 
-  /* Apply a clean, non-distorted backdrop filter */
-  backdrop-filter: blur(1px) saturate(1.05);
-  /* A subtle background color helps ensure it fully covers layers below */
-  background: rgba(70, 70, 90, 0.1);
+  -webkit-backdrop-filter: url(#border-glass-distortion);
+  backdrop-filter: url(#border-glass-distortion);
+
+  -webkit-mask: linear-gradient(to right, #000, transparent) left /
+      var(--mask-border-size) 100% no-repeat,
+    linear-gradient(to left, #000, transparent) right / var(--mask-border-size)
+      100% no-repeat,
+    linear-gradient(to bottom, #000, transparent) top / 100%
+      var(--mask-border-size) no-repeat,
+    linear-gradient(to top, #000, transparent) bottom / 100%
+      var(--mask-border-size) no-repeat;
+
+  mask: linear-gradient(to right, #000, transparent) left /
+      var(--mask-border-size) 100% no-repeat,
+    linear-gradient(to left, #000, transparent) right / var(--mask-border-size)
+      100% no-repeat,
+    linear-gradient(to bottom, #000, transparent) top / 100%
+      var(--mask-border-size) no-repeat,
+    linear-gradient(to top, #000, transparent) bottom / 100%
+      var(--mask-border-size) no-repeat;
 }
 
-/* LAYER 4: The adaptive border glow (sits on top of effect layers) */
+/*
+  LAYER 4: The foreground content (UI) that is NOT distorted.
+  It sits ON TOP of the distortion layer.
+*/
+.liquid-glass-foreground-content {
+  inset: 0;
+  z-index: 4;
+  /* This layer is interactive by default */
+}
+
+/* LAYER 5: The adaptive border glow (sits on top of everything) */
 .liquid-glass-border {
   position: absolute;
   inset: -1px;
-  border-radius: calc(var(--glass-radius, 16px) + 1px);
+  border-radius: calc(var(--glass-radius, 24px) + 1px);
   padding: 1px;
-  z-index: 4;
+  z-index: 5;
   pointer-events: none;
+  transition: opacity 0.3s ease;
   background: var(
     --adaptive-border-gradient,
     conic-gradient(
-      from 135deg at 50% 50%,
-      rgba(255, 255, 255, 0.9) 0deg,
-      rgba(255, 255, 255, 0.3) 90deg,
-      rgba(255, 255, 255, 0.1) 180deg,
-      rgba(255, 255, 255, 0.6) 270deg,
-      rgba(255, 255, 255, 0.9) 360deg
+      from 180deg at 50% 50%,
+      rgba(255, 255, 255, 0.2) 45deg,
+      rgba(255, 255, 255, 0.8) 135deg,
+      rgba(255, 255, 255, 0.2) 225deg,
+      rgba(255, 255, 255, 0.8) 315deg,
+      rgba(255, 255, 255, 0.2) 405deg
     )
   );
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -89,31 +100,18 @@
   -webkit-mask-composite: xor;
 }
 
-/* LAYER 5: The content inside the glass (sits on top of everything) */
-.liquid-glass-content {
-  position: relative;
-  z-index: 5;
-  /* Padding must match the total border effect width to align content in the clean center */
-  padding: var(--border-width);
-}
-
-/* Enhanced border for text readability */
-.liquid-glass.has-text-behind .liquid-glass-border {
-  background: var(
-    --adaptive-border-gradient,
-    conic-gradient(
-      from 135deg at 50% 50%,
-      rgba(255, 255, 255, 1) 0deg,
-      rgba(255, 255, 255, 0.4) 90deg,
-      rgba(255, 255, 255, 0.2) 180deg,
-      rgba(255, 255, 255, 0.7) 270deg,
-      rgba(255, 255, 255, 1) 360deg
-    )
-  );
-}
-
 /* Hover effects */
 .liquid-glass:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25),
+    0 8px 20px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.liquid-glass:hover::before {
+  backdrop-filter: blur(7px) saturate(1.1);
+}
+
+.liquid-glass:hover .liquid-glass-border {
+  opacity: 1;
 }

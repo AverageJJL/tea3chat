@@ -10,6 +10,7 @@ export class AdvancedLiquidGlass {
 
     this.animationId = null;
     this.frameCount = 0;
+    this.currentDistortionStrength = this.options.distortionStrength;
 
     this.handleUpdate = this.throttle(
       this.updateGlassEffect.bind(this),
@@ -22,9 +23,8 @@ export class AdvancedLiquidGlass {
 
   init() {
     this.createBorderElement();
-    this.createTransitionElement();
     this.createDistortionFilter();
-    this.setBorderWidth("thin"); // Set default
+    this.setBorderWidth("thin");
     this.updateGlassEffect();
     this.startAnimation();
 
@@ -50,15 +50,6 @@ export class AdvancedLiquidGlass {
     }
   }
 
-  createTransitionElement() {
-        if (!this.element.querySelector('.liquid-glass-transition')) {
-            const transitionElement = document.createElement('div');
-            transitionElement.className = 'liquid-glass-transition';
-            this.element.appendChild(transitionElement);
-            this.transitionElement = transitionElement;
-        }
-    }
-
   createDistortionFilter() {
     let svg = document.querySelector("#liquid-glass-svg");
     if (!svg) {
@@ -83,6 +74,7 @@ export class AdvancedLiquidGlass {
         "filter"
       );
       filter.setAttribute("id", "border-glass-distortion");
+      // Using user-provided attributes
       filter.setAttribute("x", "-50%");
       filter.setAttribute("y", "-50%");
       filter.setAttribute("width", "200%");
@@ -94,8 +86,8 @@ export class AdvancedLiquidGlass {
         "feTurbulence"
       );
       turbulence.setAttribute("type", "fractalNoise");
-      turbulence.setAttribute("baseFrequency", "0.008 0.012");
-      turbulence.setAttribute("numOctaves", "2");
+      turbulence.setAttribute("baseFrequency", "0.002 0.008");
+      turbulence.setAttribute("numOctaves", "1");
       turbulence.setAttribute("result", "turbulence");
       turbulence.setAttribute("stitchTiles", "stitch");
 
@@ -142,7 +134,7 @@ export class AdvancedLiquidGlass {
         "feGaussianBlur"
       );
       gaussianBlur.setAttribute("in", "mapped");
-      gaussianBlur.setAttribute("stdDeviation", "2");
+      gaussianBlur.setAttribute("stdDeviation", "0"); // chanfged to 0 to avoid noise
       gaussianBlur.setAttribute("result", "softMap");
 
       const displacement = document.createElementNS(
@@ -173,18 +165,14 @@ export class AdvancedLiquidGlass {
     this.stopAnimation();
     window.removeEventListener("scroll", this.handleUpdate);
     window.removeEventListener("resize", this.handleUpdate);
-    if (this.observer) {
-      this.observer.disconnect();
-    }
+    if (this.observer) this.observer.disconnect();
     if (this.borderElement && this.borderElement.parentNode) {
       this.borderElement.parentNode.removeChild(this.borderElement);
     }
   }
 
   startAnimation() {
-    if (!this.animationId) {
-      this.animate();
-    }
+    if (!this.animationId) this.animate();
   }
 
   stopAnimation() {
@@ -196,7 +184,6 @@ export class AdvancedLiquidGlass {
 
   animate() {
     this.frameCount += 0.002;
-
     if (this.turbulenceElement) {
       const baseX = 0.008;
       const baseY = 0.012;
@@ -207,46 +194,29 @@ export class AdvancedLiquidGlass {
         `${baseX + offsetX} ${baseY + offsetY}`
       );
     }
-
     if (this.displacementElement) {
-      const baseScale = this.options.distortionStrength;
-      const scaleVariation = Math.sin(this.frameCount * 0.6) * 20;
+      const baseScale = this.currentDistortionStrength;
+      const scaleVariation = Math.sin(this.frameCount * 0.6) * 15;
       this.displacementElement.setAttribute(
         "scale",
         (baseScale + scaleVariation).toString()
       );
     }
-
     this.animationId = requestAnimationFrame(this.animate);
   }
 
   updateGlassEffect() {
     if (!this.element || !this.borderElement) return;
-
     const rect = this.element.getBoundingClientRect();
     const backgroundColors = this.sampleBackgroundColors(rect);
-    const hasText = this.checkForTextBehind(rect);
-
-    const borderGradient = this.createAdaptiveBorderGradient(
-      backgroundColors,
-      hasText
-    );
+    const borderGradient = this.createAdaptiveBorderGradient(backgroundColors);
     this.element.style.setProperty("--adaptive-border-gradient", borderGradient);
-    this.element.classList.toggle("has-text-behind", hasText);
-
-    if (this.displacementElement) {
-      const strength = hasText
-        ? this.options.distortionStrength * 0.6
-        : this.options.distortionStrength;
-      this.displacementElement.setAttribute("scale", strength.toString());
-    }
   }
 
   sampleBackgroundColors(rect) {
     const sampleDistance = this.options.colorSampleRadius;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-
     const samplePoints = [
       { x: centerX, y: rect.top - sampleDistance, angle: 0 },
       { x: rect.right + sampleDistance, y: centerY - sampleDistance, angle: 45 },
@@ -257,10 +227,8 @@ export class AdvancedLiquidGlass {
       { x: rect.left - sampleDistance, y: centerY, angle: 270 },
       { x: rect.left - sampleDistance, y: centerY - sampleDistance, angle: 315 },
     ];
-
     const originalVisibility = this.element.style.visibility;
     this.element.style.visibility = "hidden";
-
     const colors = samplePoints.map((point) => {
       if (
         point.x < 0 ||
@@ -270,102 +238,70 @@ export class AdvancedLiquidGlass {
       ) {
         return { color: "rgba(0, 0, 0, 0)", angle: point.angle };
       }
-
       const element = document.elementFromPoint(point.x, point.y);
-      if (element) {
-        const style = getComputedStyle(element);
-        const bgColor = style.backgroundColor;
-        const textColor = style.color;
-        const finalColor =
-          bgColor !== "rgba(0, 0, 0, 0)" && bgColor !== "transparent"
-            ? bgColor
-            : textColor;
-        return { color: finalColor, angle: point.angle };
-      }
-      return { color: "rgba(0, 0, 0, 0)", angle: point.angle };
+      const color = element
+        ? getComputedStyle(element).backgroundColor
+        : "rgba(0,0,0,0)";
+      return { color, angle: point.angle };
     });
-
     this.element.style.visibility = originalVisibility;
     return colors;
   }
 
-  createAdaptiveBorderGradient(colorSamples, hasText) {
+  createAdaptiveBorderGradient(colorSamples) {
     const gradientStops = [];
     const getLightIntensity = (angle) => {
       const normalizedAngle = ((angle % 360) + 360) % 360;
-      const distanceFromTopLeft = Math.min(
-        Math.abs(normalizedAngle - 315),
-        360 - Math.abs(normalizedAngle - 315)
+      const highlightAngles = [135, 315];
+      const angularDistance = (a1, a2) => {
+        const diff = Math.abs(a1 - a2);
+        return Math.min(diff, 360 - diff);
+      };
+      const minDistance = Math.min(
+        ...highlightAngles.map((hAngle) =>
+          angularDistance(normalizedAngle, hAngle)
+        )
       );
-      const distanceFromBottomRight = Math.min(
-        Math.abs(normalizedAngle - 135),
-        360 - Math.abs(normalizedAngle - 135)
-      );
-      const minDistance = Math.min(distanceFromTopLeft, distanceFromBottomRight);
-      return Math.max(0.2, 1 - minDistance / 90);
+      const normalizedDistance = Math.min(1, minDistance / 90);
+      return 1 - Math.pow(normalizedDistance, 2.5);
     };
-
     colorSamples.forEach((sample) => {
       const lightIntensity = getLightIntensity(sample.angle);
       const adaptedColor = this.adaptColorForBorder(
         sample.color,
-        lightIntensity,
-        hasText
+        lightIntensity
       );
       gradientStops.push(`${adaptedColor} ${sample.angle}deg`);
     });
-
+    gradientStops.push(gradientStops[0].replace("0deg", "360deg"));
     return `conic-gradient(from 0deg at 50% 50%, ${gradientStops.join(", ")})`;
   }
 
-  adaptColorForBorder(color, lightIntensity, hasText) {
+  adaptColorForBorder(color, lightIntensity) {
     if (!color || color === "rgba(0, 0, 0, 0)" || color === "transparent") {
-      const opacity = hasText ? 0.9 : 0.6;
-      return `rgba(255, 255, 255, ${opacity * lightIntensity})`;
+      const opacity = 0.1 + Math.pow(lightIntensity, 2) * 0.8;
+      return `rgba(255, 255, 255, ${opacity})`;
     }
-
     const match = color.match(
       /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/
     );
-    if (!match) return `rgba(255, 255, 255, ${lightIntensity * 0.6})`;
-
-    let [r, g, b] = match.slice(1, 4).map(Number);
-    const brightnessFactor = 1 + lightIntensity * 0.4;
-    r = Math.min(255, Math.floor(r * brightnessFactor));
-    g = Math.min(255, Math.floor(g * brightnessFactor));
-    b = Math.min(255, Math.floor(b * brightnessFactor));
-
-    const whiteMix = lightIntensity * 0.3;
-    r = Math.floor(r + (255 - r) * whiteMix);
-    g = Math.floor(g + (255 - g) * whiteMix);
-    b = Math.floor(b + (255 - b) * whiteMix);
-
-    const baseOpacity = hasText ? 0.8 : 0.7;
-    const finalOpacity = baseOpacity * lightIntensity;
-    return `rgba(${r}, ${g}, ${b}, ${Math.min(1, finalOpacity)})`;
-  }
-
-  checkForTextBehind(rect) {
-    const points = [
-      { x: rect.left + rect.width * 0.25, y: rect.top + rect.height * 0.5 },
-      { x: rect.left + rect.width * 0.5, y: rect.top + rect.height * 0.5 },
-      { x: rect.left + rect.width * 0.75, y: rect.top + rect.height * 0.5 },
-    ];
-
-    const originalVisibility = this.element.style.visibility;
-    this.element.style.visibility = "hidden";
-
-    let hasText = false;
-    for (const point of points) {
-      const element = document.elementFromPoint(point.x, point.y);
-      if (element && element.textContent?.trim().length > 5) {
-        hasText = true;
-        break;
-      }
+    if (!match) {
+      const opacity = 0.1 + Math.pow(lightIntensity, 2) * 0.7;
+      return `rgba(255, 255, 255, ${opacity})`;
     }
-
-    this.element.style.visibility = originalVisibility;
-    return hasText;
+    let [r, g, b] = match.slice(1, 4).map(Number);
+    const glowAmount = Math.floor(220 * Math.pow(lightIntensity, 3));
+    r = Math.min(255, r + glowAmount);
+    g = Math.min(255, g + glowAmount);
+    b = Math.min(255, b + glowAmount);
+    const brightnessFactor = 1 + Math.pow(lightIntensity, 2) * 0.2;
+    r = Math.min(255, r * brightnessFactor);
+    g = Math.min(255, g * brightnessFactor);
+    b = Math.min(255, b * brightnessFactor);
+    const finalOpacity = 0.7 * lightIntensity;
+    return `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(
+      b
+    )}, ${Math.min(1, finalOpacity)})`;
   }
 
   throttle(func, delay) {
@@ -377,34 +313,15 @@ export class AdvancedLiquidGlass {
   }
 
   setBorderWidth(width = "medium") {
-  const borderWidths = {
-    thin: 10,
-    medium: 15,
-    thick: 20,
-  };
-  
-  const transitionWidths = {
-    thin: 6,
-    medium: 8,
-    thick: 10,
-  };
-  
-  const borderWidth = borderWidths[width] || borderWidths.medium;
-  const transitionWidth = transitionWidths[width] || transitionWidths.medium;
-  
-  this.element.style.setProperty("--border-width", `${borderWidth}px`);
-  this.element.style.setProperty("--transition-width", `${transitionWidth}px`);
-
-  if (this.displacementElement) {
-    const strengthMultipliers = {
-      thin: 0.8,
-      medium: 1.2,
-      thick: 1.5,
-    };
-    const multiplier = strengthMultipliers[width] || strengthMultipliers.medium;
-    const newStrength = this.options.distortionStrength * multiplier;
-    this.displacementElement.setAttribute("scale", newStrength.toString());
+    const borderWidths = { thin: 5, medium: 12, thick: 18 };
+    const borderWidth = borderWidths[width] || borderWidths.medium;
+    this.element.style.setProperty("--border-width", `${borderWidth}px`);
+    if (this.displacementElement) {
+      const strengthMultipliers = { thin: 0.8, medium: 1.0, thick: 1.3 };
+      const multiplier =
+        strengthMultipliers[width] || strengthMultipliers.medium;
+      this.currentDistortionStrength =
+        this.options.distortionStrength * multiplier;
+    }
   }
-}
-  
 }
