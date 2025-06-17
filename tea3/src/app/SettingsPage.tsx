@@ -85,25 +85,59 @@ export default function SettingsPage() {
     );
   };
 
+  const handleToggleResumableStream = async () => {
+    if (!user) return;
+
+    const newValue = !disableResumableStream;
+    setDisableResumableStream(newValue); // Optimistic UI update
+
+    try {
+      const existingPrefs = await db.userPreferences
+        .where({ userId: user.id })
+        .first();
+
+      if (existingPrefs?.id) {
+        await db.userPreferences.update(existingPrefs.id, {
+          disableResumableStream: newValue,
+        });
+      } else {
+        await db.userPreferences.put({
+          userId: user.id,
+          disableResumableStream: newValue,
+        });
+      }
+      setSaveStatus({ message: "Setting updated!", type: "success" });
+    } catch (e) {
+      setDisableResumableStream(!newValue); // Revert on error
+      console.error("Failed to update resumable stream preference", e);
+      setSaveStatus({ message: "Failed to update setting.", type: "error" });
+    }
+  };
+
   const handleSave = async () => {
     if (!user) return;
     try {
-      const existingPrefs = await db.userPreferences.where({ userId: user.id }).first();
+      const existingPrefs = await db.userPreferences
+        .where({ userId: user.id })
+        .first();
 
-      const payload: UserPreferences = {
-        userId: user.id,
+      const payload = {
         name,
         role,
         traits,
         customInstructions,
-        disableResumableStream,
       };
 
-      await db.userPreferences.put({ ...payload, id: existingPrefs?.id });
-      setSaveStatus({ message: 'Preferences saved!', type: 'success' });
+      if (existingPrefs?.id) {
+        await db.userPreferences.update(existingPrefs.id, payload);
+      } else {
+        await db.userPreferences.put({ userId: user.id, ...payload });
+      }
+
+      setSaveStatus({ message: "Preferences saved!", type: "success" });
     } catch (e) {
       console.error("Failed to save preferences", e);
-      setSaveStatus({ message: 'Failed to save.', type: 'error' });
+      setSaveStatus({ message: "Failed to save.", type: "error" });
     }
   };
 
@@ -377,7 +411,7 @@ export default function SettingsPage() {
                 <div className="flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setDisableResumableStream(!disableResumableStream)}
+                    onClick={handleToggleResumableStream}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-transparent ${
                       disableResumableStream
                         ? 'bg-blue-600 shadow-lg shadow-blue-500/25'
