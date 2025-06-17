@@ -1,17 +1,17 @@
-// ChatPage.tsx
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, Thread, Message, MessageAttachment, UserPreferences } from "./db"; // Ensure UserPreferences is imported
 import { uploadFileToSupabaseStorage } from "./supabaseStorage";
-import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
+import { v4 as uuidv4 } from "uuid";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
@@ -24,7 +24,7 @@ import {
   SendHorizonal,
 } from "./components/Icons";
 import "./liquid-glass.css";
-import "./md-renderer.css"; 
+import "./md-renderer.css";
 import LiquidGlass from "./components/LiquidGlass";
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
@@ -417,7 +417,7 @@ const MessageRow = React.memo(
       return (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
+          rehypePlugins={[rehypeKatex, rehypeRaw]}
           components={{
             code: CodeBlock,
             table: ({ node, ...props }) => (
@@ -455,9 +455,7 @@ const MessageRow = React.memo(
               </div>
             </div>
             {/* Markdown body */}
-            <div className="obsidian-theme max-w-none">
-              {markdownBody}
-            </div>
+            <div className="obsidian-theme max-w-none">{markdownBody}</div>
             {/* Action buttons; visible on hover via CSS */}
             <div className="absolute bottom-0 left-0 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
@@ -633,13 +631,21 @@ export default function ChatPage() {
     isLoadingModels,
     modelsError,
   } = useOutletContext<ChatPageContext>();
-  
+
   const userPreferences = useLiveQuery(
     () => {
       if (!user) return undefined;
       return db.userPreferences.where({ userId: user.id }).first();
     },
     [user?.id]
+  );
+
+  const currentThread = useLiveQuery(
+    () => {
+      if (!supabaseThreadId) return undefined;
+      return db.threads.where({ supabase_id: supabaseThreadId }).first();
+    },
+    [supabaseThreadId]
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -1356,6 +1362,15 @@ export default function ChatPage() {
     } catch (err: any) {
       if (err.name === "AbortError") {
         console.log("Generation aborted by user (new message flow).");
+        if (assistantLocalMessageId) {
+          const msgToUpdate = await db.messages.get(assistantLocalMessageId);
+          const currentContent = msgToUpdate?.content || "";
+          const cancellationMessage =
+            '\n\n<div class="my-2 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-sm font-medium text-center">Generation stopped by user.</div>';
+          await db.messages.update(assistantLocalMessageId, {
+            content: currentContent + cancellationMessage,
+          });
+        }
       } else {
         console.error("Submit error:", err);
         setError(err.message || "Failed to get response.");
@@ -1517,81 +1532,94 @@ export default function ChatPage() {
         regenerationStreamId
       );
 
-    try {
-      // Main try for handleRegenerate API call and stream processing
-      const regenController = new AbortController();
-      abortControllerRef.current = regenController;
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: modelForRegeneration,
-          messages: historyForAI,
-          useWebSearch:
-            useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
-          assistantMessageId: regenerationStreamId,
-          userPreferences: userPreferences,
-        }),
-        signal: regenController.signal,
-      });
-      if (!response.ok || !response.body) throw new Error("API error");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        chunk.split("\n").forEach((line) => {
-          if (line.startsWith("0:")) {
-            try {
-              full += JSON.parse(line.substring(2));
-              if (msg.id) {
-                db.messages.update(msg.id, { content: full });
-              }
-            } catch (e) {
-              console.warn("parse stream line failed", line, e);
-            }
-          }
+      try {
+        // Main try for handleRegenerate API call and stream processing
+        const regenController = new AbortController();
+        abortControllerRef.current = regenController;
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: modelForRegeneration,
+            messages: historyForAI,
+            useWebSearch:
+              useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
+            assistantMessageId: regenerationStreamId,
+            userPreferences: userPreferences,
+          }),
+          signal: regenController.signal,
         });
-      } // Closes while loop for stream reading
-      // Correct placement of the catch and finally for the main try block of handleRegenerate
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        console.log("Generation aborted by user (regenerate flow).");
-      } else {
-        console.error("Regenerate error:", err);
-        if (msg.id) {
-          await db.messages.update(msg.id, { content: `Error: ${err.message}` });
-        }
-      }
-    } finally {
-      setIsSending(false);
-      abortControllerRef.current = null;
-      sessionStorage.removeItem("inFlightAssistantMessageId");
-
-      // Sync only the regenerated message to Supabase
-      if (msg.thread_supabase_id && msg.id) {
-        try {
-          const updatedMessage = await db.messages.get(msg.id);
-          const messagesToUpsert = updatedMessage ? [updatedMessage] : [];
-          await syncEditOperationToBackend({
-            threadSupabaseId: msg.thread_supabase_id,
-            messagesToUpsert,
-            idsToDelete: idsToDelete,
+        if (!response.ok || !response.body) throw new Error("API error");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let full = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          chunk.split("\n").forEach((line) => {
+            if (line.startsWith("0:")) {
+              try {
+                full += JSON.parse(line.substring(2));
+                if (msg.id) {
+                  db.messages.update(msg.id, { content: full });
+                }
+              } catch (e) {
+                console.warn("parse stream line failed", line, e);
+              }
+            }
           });
-        } catch (syncError) {
-          console.error(
-            "Failed to sync regenerated message to Supabase:",
-            syncError
-          );
-          setError(
-            "Message regenerated but failed to sync to cloud. Your changes are saved locally."
-          );
+        } // Closes while loop for stream reading
+        // Correct placement of the catch and finally for the main try block of handleRegenerate
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          console.log("Generation aborted by user (regenerate flow).");
+          if (msg.id) {
+            const msgToUpdate = await db.messages.get(msg.id);
+            const currentContent = msgToUpdate?.content || "";
+            const cancellationMessage =
+              '\n\n<div class="my-2 p-3 bg-red-500/20 border border-red-500/30 text-red-200 rounded-xl text-sm font-medium text-center">Generation stopped by user.</div>';
+            await db.messages.update(msg.id, {
+              content: currentContent + cancellationMessage,
+            });
+          }
+        } else {
+          console.error("Regenerate error:", err);
+          if (msg.id) {
+            await db.messages.update(msg.id, {
+              content: `Error: ${err.message}`,
+            });
+          }
+        }
+      } finally {
+        setIsSending(false);
+        abortControllerRef.current = null;
+        sessionStorage.removeItem("inFlightAssistantMessageId");
+
+        // Sync only the regenerated message to Supabase
+        if (msg.thread_supabase_id && msg.id) {
+          try {
+            const updatedMessage = await db.messages.get(msg.id);
+            const messagesToUpsert = updatedMessage ? [updatedMessage] : [];
+            await syncEditOperationToBackend({
+              threadSupabaseId: msg.thread_supabase_id,
+              messagesToUpsert,
+              idsToDelete: idsToDelete,
+            });
+          } catch (syncError) {
+            console.error(
+              "Failed to sync regenerated message to Supabase:",
+              syncError
+            );
+            setError(
+              "Message regenerated but failed to sync to cloud. Your changes are saved locally."
+            );
+          }
         }
       }
-    }
-  }, [messages, selectedModel, availableModels, useWebSearch, isSending]); // End of handleRegenerate
+    },
+    [messages, selectedModel, availableModels, useWebSearch, isSending]
+  ); // End of handleRegenerate
 
   const handleBranch = React.useCallback(
     async (messageToBranchFrom: Message) => {
@@ -1778,6 +1806,37 @@ export default function ChatPage() {
     }
   }, []);
 
+  const processedMessages = useMemo(() => {
+    if (!messages || !currentThread?.forked_from_id) {
+      return messages?.map((m) => ({ type: "message", data: m as Message }));
+    }
+
+    const threadCreationTime = currentThread.createdAt.getTime();
+    let separatorInserted = false;
+    const result: (
+      | { type: "message"; data: Message }
+      | { type: "separator"; id: string }
+    )[] = [];
+
+    const relevantMessages =
+      messages.filter((m) => m.thread_supabase_id === supabaseThreadId) || [];
+
+    for (const message of relevantMessages) {
+      if (
+        !separatorInserted &&
+        message.createdAt.getTime() >= threadCreationTime
+      ) {
+        if (result.length > 0) {
+          result.push({ type: "separator", id: "fork-separator" });
+          separatorInserted = true;
+        }
+      }
+      result.push({ type: "message", data: message });
+    }
+
+    return result;
+  }, [messages, currentThread, supabaseThreadId]);
+
   // --- RENDER ---
   if (isLoadingModels || !isUserLoaded) {
     return (
@@ -1790,30 +1849,25 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="chat-container flex-grow flex flex-col">
-      <div className="frosted-header p-6 flex justify-between items-center relative z-10 shrink-0">
-        <div className="flex items-center space-x-6">
-          <h1 className="text-2xl font-bold text-white">Tweak3 Chat</h1>
-          {/* Removed Model Selector and Web Search Toggle - moved to chatbar */}
+    <div className="chat-container flex-grow flex flex-col relative">
+      {/* UserButton positioned absolutely in the top right corner */}
+      {user && (
+        <div className="absolute top-6 right-6 z-20">
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: "w-8 h-8",
+                userButtonPopoverCard:
+                  "bg-gray-900/95 backdrop-blur border border-gray-700",
+                userButtonPopoverActionButton:
+                  "text-white hover:bg-gray-700",
+                userButtonPopoverActionButtonText: "text-white",
+                userButtonPopoverFooter: "hidden",
+              },
+            }}
+          />
         </div>
-        {user && (
-          <div className="flex items-center space-x-3 text-white">
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-8 h-8",
-                  userButtonPopoverCard:
-                    "bg-gray-900/95 backdrop-blur border border-gray-700",
-                  userButtonPopoverActionButton:
-                    "text-white hover:bg-gray-700",
-                  userButtonPopoverActionButtonText: "text-white",
-                  userButtonPopoverFooter: "hidden",
-                },
-              }}
-            />
-          </div>
-        )}
-      </div>
+      )}
 
       {error && (
         <div className="mx-6 mt-4 relative z-10">
@@ -1836,7 +1890,7 @@ export default function ChatPage() {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <div className="mx-auto max-w-5xl space-y-8 px-4 pb-45">
+        <div className="mx-auto margin max-w-5xl space-y-8 px-6 pb-45">
           {/* Welcome message when no messages */}
           {(!messages || messages.length === 0) &&
             attachedFiles.length === 0 && (
@@ -1851,22 +1905,41 @@ export default function ChatPage() {
               </div>
             )}
 
-          {messages?.map((m) => (
-            <MessageRow
-              key={m.id}
-              message={m}
-              availableModels={availableModels}
-              onEdit={handleEditMessage}
-              onRegenerate={handleRegenerate}
-              onBranch={handleBranch}
-            />
-          ))}
+          {currentThread?.forked_from_id && (
+            <div className="text-center text-white/50 text-sm py-4 border-b border-white/10">
+              --- This is a copy of a conversation ---
+            </div>
+          )}
+
+          {processedMessages?.map((item) => {
+            if (item.type === "separator") {
+              return (
+                <div
+                  key={item.id}
+                  className="text-center text-white/50 text-sm py-4 border-b border-t border-white/10 my-4"
+                >
+                  --- Messages beyond this point are only visible to you ---
+                </div>
+              );
+            }
+            const m = item.data;
+            return (
+              <MessageRow
+                key={m.id}
+                message={m}
+                availableModels={availableModels}
+                onEdit={handleEditMessage}
+                onRegenerate={handleRegenerate}
+                onBranch={handleBranch}
+              />
+            );
+          })}
           <div ref={messagesEndRef} /> {/* For scrolling to bottom */}
         </div>
       </div>
 
       {/* Chatbar wrapper: flush to bottom on mobile, slight gap on md+ */}
-      <div className="absolute bottom-0 md:bottom-2 left-0 right-0 z-20">
+      <div className="absolute bottom-0 md:bottom-2 left-5 right-5 z-20">
         {/* Scroll to bottom button - positioned above chatbar */}
         {showScrollButton && (
           <div className="flex justify-center mb-3">
@@ -1916,7 +1989,7 @@ export default function ChatPage() {
                 )}
                 <textarea
                   ref={textareaRef}
-                  className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
+                  className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4 px-4"
                   value={input}
                   placeholder="Ask anything..."
                   onChange={(e) => setInput(e.target.value)}
@@ -2075,26 +2148,34 @@ export default function ChatPage() {
                     </div>
                   </div>
 
-                <button
-                  type={isSending ? "button" : "submit"}
-                  onClick={isSending ? handleStopGeneration : undefined}
-                  disabled={!isSending && (!input.trim() && attachedFiles.length === 0)}
-                  className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors focus:outline-none shadow-lg hover:shadow-xl ${
-                    isSending
-                      ? "frosted-button-sidebar text-white"
-                      : "bg-white hover:bg-gray-200 text-black disabled:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  }`}
-                  title={isSending ? "Stop generating" : editingMessage ? "Update message" : "Send message"}
-                >
-                  {isSending ? (
-                    <XSquare />
-                  ) : editingMessage ? (
-                    <span className="text-sm font-medium">Update</span>
-                  ) : (
-                    <SendHorizonal />
-                  )}
-                </button>
-              </div>
+                  <button
+                    type={isSending ? "button" : "submit"}
+                    onClick={isSending ? handleStopGeneration : undefined}
+                    disabled={
+                      !isSending && (!input.trim() && attachedFiles.length === 0)
+                    }
+                    className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors focus:outline-none shadow-lg hover:shadow-xl ${
+                      isSending
+                        ? "frosted-button-sidebar text-white"
+                        : "bg-white hover:bg-gray-200 text-black disabled:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    }`}
+                    title={
+                      isSending
+                        ? "Stop generating"
+                        : editingMessage
+                        ? "Update message"
+                        : "Send message"
+                    }
+                  >
+                    {isSending ? (
+                      <XSquare />
+                    ) : editingMessage ? (
+                      <span className="text-sm font-medium">Update</span>
+                    ) : (
+                      <SendHorizonal />
+                    )}
+                  </button>
+                </div>
               </LiquidGlass.Foreground>
             </LiquidGlass>
           </form>
