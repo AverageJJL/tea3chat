@@ -47,6 +47,9 @@ export default function SettingsPage() {
       setRole(userPreferences.role || "");
       setTraits(userPreferences.traits || []);
       setCustomInstructions(userPreferences.customInstructions || "");
+      setDisableResumableStream(
+        userPreferences.disableResumableStream ?? false
+      );
     }
   }, [userPreferences]);
 
@@ -93,6 +96,7 @@ export default function SettingsPage() {
         role,
         traits,
         customInstructions,
+        disableResumableStream,
       };
 
       await db.userPreferences.put({ ...payload, id: existingPrefs?.id });
