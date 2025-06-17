@@ -1,0 +1,202 @@
+/* app/md-renderer.css */
+
+
+.obsidian-theme {
+  /* Font settings similar to Obsidian's default */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-size: 18px; /* A comfortable reading size */
+  line-height: 1.7; /* Generous line spacing for readability */
+  color: #e0e0e0; /* A softer white than pure #FFF */
+}
+
+/* General spacing for block elements like paragraphs */
+.obsidian-theme p {
+  margin-bottom: 1.25em; /* 1em = 18px, so this is ~22px */
+}
+
+/* --- Headings --- */
+.obsidian-theme h1,
+.obsidian-theme h2,
+.obsidian-theme h3,
+.obsidian-theme h4,
+.obsidian-theme h5,
+.obsidian-theme h6 {
+  margin-top: 1.5em;
+  margin-bottom: 1em;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.obsidian-theme h1 {
+  font-size: 2em;
+}
+.obsidian-theme h2 {
+  font-size: 1.5em;
+}
+.obsidian-theme h3 {
+  font-size: 1.25em;
+}
+.obsidian-theme h4 {
+  font-size: 1.1em;
+}
+.obsidian-theme h5 {
+  font-size: 1em;
+  font-weight: 600; /* Make smaller headers slightly bolder */
+}
+.obsidian-theme h6 {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7); /* Dim the smallest header */
+}
+
+/* --- Horizontal Rule (HR) --- */
+/* This directly addresses your feedback about spacing */
+.obsidian-theme hr {
+  border: none;
+  border-top: 2px solid rgba(255, 255, 255, 0.15);
+  /* Generous margin above and below the line */
+  margin-top: 3em;
+  margin-bottom: 3em;
+}
+
+/* --- Links --- */
+.obsidian-theme a {
+  color: #8cb4ff;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.obsidian-theme a:hover {
+  text-decoration: underline;
+  color: #a7c7ff;
+}
+
+/* --- Blockquotes --- */
+.obsidian-theme blockquote {
+  margin-left: 0;
+  padding-left: 1.5em;
+  border-left: 4px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* --- Lists --- */
+.obsidian-theme ul,
+.obsidian-theme ol {
+  padding-left: 2em;
+  margin-bottom: 1.25em;
+}
+
+/* This is the new part that adds the visible bullets/numbers */
+.obsidian-theme ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.obsidian-theme ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
+.obsidian-theme li {
+  margin-bottom: 0.5em;
+}
+
+/* --- Inline Code --- */
+/* This targets single backtick code like `const x = 1;` */
+.obsidian-theme code {
+  font-size: 0.9em;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
+    monospace;
+}
+
+/* --- Code Blocks --- */
+/* This ensures our custom inline code style doesn't mess with the 
+   already perfectly working syntax-highlighted code blocks. */
+.obsidian-theme pre code {
+  background-color: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  border-radius: 0;
+}
+
+
+/* --- Tables --- */
+.obsidian-theme table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+  font-size: 0.95em;
+}
+
+.obsidian-theme th,
+.obsidian-theme td {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.75em 1em;
+  text-align: left;
+}
+
+.obsidian-theme th {
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+/* Add a transition for a smooth hover effect */
+.obsidian-theme tr {
+  transition: background-color 0.2s ease-in-out;
+}
+
+.obsidian-theme tr:nth-of-type(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* This is the new hover effect */
+.obsidian-theme tr:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.table-wrapper {
+  overflow-x: auto; /* This enables horizontal scrolling */
+  width: 100%;
+  margin-bottom: 1.5em;
+  border-radius: 8px;
+}
+
+
+/* Optional: Style the scrollbar to match the dark theme */
+.table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+.table-wrapper::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* --- Strikethrough --- */
+/* Targets <s> and <del> tags */
+.obsidian-theme s,
+.obsidian-theme del {
+  text-decoration: none; /* Remove the default line */
+  background-image: linear-gradient(
+    transparent 50%,
+    rgba(255, 255, 255, 0.7) 50%
+  );
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+  background-position: 0 55%; /* Position the line vertically */
+}

@@ -774,10 +774,10 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         </button>
 
         <div
-          className={`frosted-sidebar flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
-            isCollapsed ? "w-0" : "w-68"
-          }`}
-        >
+        className={`bg-gray-700/40 backdrop-blur-xl border-r border-gray-600/30 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out relative ${
+          isCollapsed ? "w-0" : "w-72"
+        }`}
+      >
                   {!isCollapsed && (
           <div className="flex flex-col h-full">
             <div className="p-6 pt-20 border-b border-gray-600/20">
@@ -835,7 +835,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
             <div className="p-6 pt-20 border-b border-gray-600/20">
               <button
                 onClick={onNewChat}
-                className="w-full bg-white hover:bg-gray-100 text-gray-900 font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                className="w-full bg-white hover:bg-gray-50 text-gray-800 font-semibold py-3 px-4 rounded-lg flex items-center justify-center space-x-2 shadow-md hover:shadow-xl hover:-translate-y-1 transform transition-all duration-300 ease-in-out"
               >
                 <svg
                   width="16"

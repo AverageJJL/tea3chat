@@ -1,7 +1,7 @@
 // ChatPage.tsx
 "use client";
 
-import React, { useState, useEffect, useRef} from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -14,8 +14,17 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Branch, XSquare, Loader2, Pencil, Recycle, Paperclip, SendHorizonal} from "./components/Icons";
+import {
+  Branch,
+  XSquare,
+  Loader2,
+  Pencil,
+  Recycle,
+  Paperclip,
+  SendHorizonal,
+} from "./components/Icons";
 import "./liquid-glass.css";
+import "./md-renderer.css"; 
 import LiquidGlass from "./components/LiquidGlass";
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
@@ -26,7 +35,7 @@ interface FullThreadSyncPayload {
   attachmentsData: {
     localMessageId: number;
     file_name: string;
-    file_url: string; 
+    file_url: string;
   }[];
 }
 
@@ -61,7 +70,6 @@ interface SupabaseThread {
   messages: SupabaseMessage[];
 }
 
-
 async function syncEditOperationToBackend(payload: {
   threadSupabaseId: string;
   messagesToUpsert: Message[];
@@ -70,9 +78,12 @@ async function syncEditOperationToBackend(payload: {
   try {
     // --- Safeguard against missing supabase_id ---
     // Ensure every message being upserted has a valid UUID.
-    const sanitizedMessages = payload.messagesToUpsert.map(msg => {
+    const sanitizedMessages = payload.messagesToUpsert.map((msg) => {
       if (!msg.supabase_id) {
-        console.warn("Found message without supabase_id during sync, generating new one.", msg);
+        console.warn(
+          "Found message without supabase_id during sync, generating new one.",
+          msg
+        );
         return { ...msg, supabase_id: uuidv4() };
       }
       return msg;
@@ -84,7 +95,7 @@ async function syncEditOperationToBackend(payload: {
       // Send the new, more detailed payload with sanitized messages
       body: JSON.stringify({
         ...payload,
-        messagesToUpsert: sanitizedMessages
+        messagesToUpsert: sanitizedMessages,
       }),
     });
 
@@ -179,10 +190,8 @@ async function fetchAndStoreCloudData() {
 
       await db.transaction("rw", db.threads, db.messages, async () => {
         for (const remoteThread of supabaseThreads) {
-
           const threadSupabaseId = remoteThread.shared_id;
 
-        
           const threadPayloadToStore: Omit<Thread, "id"> = {
             supabase_id: threadSupabaseId,
             userId: remoteThread.clerk_user_id,
@@ -192,7 +201,6 @@ async function fetchAndStoreCloudData() {
           };
 
           await db.threads.put(threadPayloadToStore);
-
 
           for (const remoteMessage of remoteThread.messages) {
             const messageSupabaseId = (remoteMessage as any).shared_id;
@@ -211,7 +219,7 @@ async function fetchAndStoreCloudData() {
               createdAt: new Date(remoteMessage.created_at),
               model: remoteMessage.model,
             };
-            
+
             await db.messages.put(localMessagePayload);
           }
         }
@@ -272,12 +280,15 @@ async function syncThreadWithAttachments(supabaseThreadId: string) {
     });
   } catch (syncError) {
     console.error(`Sync failed for thread ${supabaseThreadId}:`, syncError);
-    
   }
 }
 
 interface ChatPageContext {
-  availableModels: { value: string; displayName: string; supportsImages?: boolean }[];
+  availableModels: {
+    value: string;
+    displayName: string;
+    supportsImages?: boolean;
+  }[];
   selectedModel: string;
   setSelectedModel: React.Dispatch<React.SetStateAction<string>>;
   isLoadingModels: boolean;
@@ -291,7 +302,7 @@ const MessageRow = React.memo(
     availableModels,
     onEdit,
     onRegenerate,
-    onBranch
+    onBranch,
   }: {
     message: Message;
     availableModels: { value: string; displayName: string }[];
@@ -316,70 +327,89 @@ const MessageRow = React.memo(
     const isAssistant = message.role === "assistant";
 
     // Create a custom code component to handle syntax highlighting
-    const CodeBlock = React.useCallback(({ inline, className, children, ...rest }: any) => {
-      const [codeIsCopied, setCodeIsCopied] = React.useState(false);
-      const match = /language-(\w+)/.exec(className || "");
-      
-      const handleCodeCopy = React.useCallback(async () => {
-        try {
-          await navigator.clipboard.writeText(String(children));
-          setCodeIsCopied(true);
-          setTimeout(() => setCodeIsCopied(false), 2000);
-        } catch (err) {
-          console.error("Failed to copy code:", err);
-        }
-      }, [children]);
-      
-      return !inline && match ? (
-        <div className="code-block-container group">
-          <div className="code-block-header">
-            <span className="code-block-language">
-              {match[1]}
-            </span>
-            <button
-              onClick={handleCodeCopy}
-              className="code-block-copy-btn"
-              title={codeIsCopied ? "Copied!" : "Copy code"}
-            >
-              {codeIsCopied ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              )}
-            </button>
+    const CodeBlock = React.useCallback(
+      ({ inline, className, children, ...rest }: any) => {
+        const [codeIsCopied, setCodeIsCopied] = React.useState(false);
+        const match = /language-(\w+)/.exec(className || "");
+
+        const handleCodeCopy = React.useCallback(async () => {
+          try {
+            await navigator.clipboard.writeText(String(children));
+            setCodeIsCopied(true);
+            setTimeout(() => setCodeIsCopied(false), 2000);
+          } catch (err) {
+            console.error("Failed to copy code:", err);
+          }
+        }, [children]);
+
+        return !inline && match ? (
+          <div className="code-block-container group">
+            <div className="code-block-header">
+              <span className="code-block-language">{match[1]}</span>
+              <button
+                onClick={handleCodeCopy}
+                className="code-block-copy-btn"
+                title={codeIsCopied ? "Copied!" : "Copy code"}
+              >
+                {codeIsCopied ? (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <div className="code-block-content">
+              <SyntaxHighlighter
+                style={vscDarkPlus as any}
+                language={match[1]}
+                PreTag="div"
+                showLineNumbers={false}
+                wrapLines={false}
+                customStyle={{
+                  margin: 0,
+                  padding: "20px 24px",
+                  background: "transparent",
+                  fontSize: "15px",
+                  lineHeight: "1.8",
+                  letterSpacing: "0.025em",
+                }}
+                {...(rest as any)}
+              >
+                {String(children).replace(/\n$/, "")}
+              </SyntaxHighlighter>
+            </div>
           </div>
-          <div className="code-block-content">
-            <SyntaxHighlighter
-              style={vscDarkPlus as any}
-              language={match[1]}
-              PreTag="div"
-              showLineNumbers={false}
-              wrapLines={false}
-              customStyle={{
-                margin: 0,
-                padding: '20px 24px',
-                background: 'transparent',
-                fontSize: '15px',
-                lineHeight: '1.8',
-                letterSpacing: '0.025em',
-              }}
-              {...(rest as any)}
-            >
-              {String(children).replace(/\n$/, "")}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-      ) : (
-        <code className={className} {...(rest as any)}>
-          {children}
-        </code>
-      );
-    }, []);
+        ) : (
+          <code className={className} {...(rest as any)}>
+            {children}
+          </code>
+        );
+      },
+      []
+    );
 
     // Memoise heavy Markdown render
     const markdownBody = React.useMemo(() => {
@@ -390,6 +420,11 @@ const MessageRow = React.memo(
           rehypePlugins={[rehypeKatex]}
           components={{
             code: CodeBlock,
+            table: ({ node, ...props }) => (
+              <div className="table-wrapper">
+                <table {...props} />
+              </div>
+            ),
           }}
         >
           {message.content}
@@ -420,7 +455,7 @@ const MessageRow = React.memo(
               </div>
             </div>
             {/* Markdown body */}
-            <div className="prose prose-invert prose-xl max-w-none text-white/90 leading-relaxed text-lg">
+            <div className="obsidian-theme max-w-none">
               {markdownBody}
             </div>
             {/* Action buttons; visible on hover via CSS */}
@@ -429,13 +464,38 @@ const MessageRow = React.memo(
                 type="button"
                 onClick={handleCopy}
                 className={`p-1.5 rounded-md transition-all ${
-                  isCopied ? "text-green-400 bg-green-500/20" : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                  isCopied
+                    ? "text-green-400 bg-green-500/20"
+                    : "text-white/50 hover:text-white/80 hover:bg-white/10"
                 }`}
               >
                 {isCopied ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
                 )}
               </button>
               <button
@@ -458,9 +518,48 @@ const MessageRow = React.memo(
         ) : (
           <div className="max-w-4xl relative pb-8">
             <div className="frosted-glass rounded-2xl px-6 py-4 shadow-lg">
-              <div className="text-white/90 leading-relaxed text-lg">
-                <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
-              </div>
+              {/* START: FIX - Added Attachment Rendering Logic */}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="mb-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {message.attachments.map((att, index) => (
+                    <div key={index} className="relative group">
+                      {att.mime_type?.startsWith("image/") ? (
+                        <a
+                          href={att.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <img
+                            src={att.file_url}
+                            alt={att.file_name}
+                            className="w-full h-24 object-cover rounded-lg cursor-pointer"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          href={att.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full h-24 bg-gray-700/50 rounded-lg flex flex-col items-center justify-center p-2 text-center hover:bg-gray-600/50 transition-colors"
+                        >
+                          <Paperclip />
+                          <span className="text-gray-300 text-xs font-medium truncate w-full mt-2">
+                            {att.file_name}
+                          </span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* END: FIX - Added Attachment Rendering Logic */}
+
+              {/* Only render the content paragraph if there is content */}
+              {message.content && (
+                <div className="text-white/90 leading-relaxed text-lg">
+                  <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
+                </div>
+              )}
             </div>
             {/* User message buttons */}
             <div className="absolute bottom-0 right-0 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -468,13 +567,38 @@ const MessageRow = React.memo(
                 type="button"
                 onClick={handleCopy}
                 className={`p-1.5 rounded-md transition-all ${
-                  isCopied ? "text-green-400 bg-green-500/20" : "text-white/50 hover:text-white/80 hover:bg-white/10"
+                  isCopied
+                    ? "text-green-400 bg-green-500/20"
+                    : "text-white/50 hover:text-white/80 hover:bg-white/10"
                 }`}
               >
                 {isCopied ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
                 )}
               </button>
               <button
@@ -509,7 +633,7 @@ export default function ChatPage() {
     isLoadingModels,
     modelsError,
   } = useOutletContext<ChatPageContext>();
-  
+
   const [error, setError] = useState<string | null>(null);
   const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -605,7 +729,9 @@ export default function ChatPage() {
     const needsExpansion = lineCount > 2;
 
     // Update state only if it changed to prevent redundant renders
-    setIsTextareaExpanded(prev => (prev !== needsExpansion ? needsExpansion : prev));
+    setIsTextareaExpanded((prev) =>
+      prev !== needsExpansion ? needsExpansion : prev
+    );
   }, [input]);
 
   // --- DATA FETCHING & SYNC ---
@@ -686,52 +812,52 @@ export default function ChatPage() {
 
   useEffect(() => {
     const resumeStream = async (assistantMessageId: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    console.log(
-      `[${timestamp}] [FE] Starting resumeStream for ID: ${assistantMessageId}`
-    );
-    setIsResuming(true);
-    setIsSending(true); // Block user input
-
-    const messageToResume = await db.messages
-      .where("supabase_id")
-      .equals(assistantMessageId)
-      .first();
-
-    if (!messageToResume || !messageToResume.id) {
-      console.error(
-        `[${timestamp}] [FE] Could not find message ${assistantMessageId} in Dexie to resume.`
-      );
-      sessionStorage.removeItem("inFlightAssistantMessageId");
-      setIsResuming(false);
-      setIsSending(false);
-      return;
-    }
-
-    const cleanup = (sync: boolean = false) => {
-      const cleanupTimestamp = new Date().toLocaleTimeString();
+      const timestamp = new Date().toLocaleTimeString();
       console.log(
-        `[${cleanupTimestamp}] [FE] Cleaning up resume process for ${assistantMessageId}. Sync: ${sync}`
+        `[${timestamp}] [FE] Starting resumeStream for ID: ${assistantMessageId}`
       );
-      isCancelled = true; // Stop the while loop
-      sessionStorage.removeItem("inFlightAssistantMessageId");
-      setIsResuming(false);
-      setIsSending(false);
-      if (sync && messageToResume.thread_supabase_id) {
-        console.log(
-          `[${cleanupTimestamp}] [FE] Resumption complete, performing final sync.`
+      setIsResuming(true);
+      setIsSending(true); // Block user input
+
+      const messageToResume = await db.messages
+        .where("supabase_id")
+        .equals(assistantMessageId)
+        .first();
+
+      if (!messageToResume || !messageToResume.id) {
+        console.error(
+          `[${timestamp}] [FE] Could not find message ${assistantMessageId} in Dexie to resume.`
         );
-        syncThreadWithAttachments(messageToResume.thread_supabase_id);
+        sessionStorage.removeItem("inFlightAssistantMessageId");
+        setIsResuming(false);
+        setIsSending(false);
+        return;
       }
-    };
 
-    let isCancelled = false;
-    const pollInterval = 2000;
-    let lastContentLength = -1;
-    let stablePolls = 0;
+      const cleanup = (sync: boolean = false) => {
+        const cleanupTimestamp = new Date().toLocaleTimeString();
+        console.log(
+          `[${cleanupTimestamp}] [FE] Cleaning up resume process for ${assistantMessageId}. Sync: ${sync}`
+        );
+        isCancelled = true; // Stop the while loop
+        sessionStorage.removeItem("inFlightAssistantMessageId");
+        setIsResuming(false);
+        setIsSending(false);
+        if (sync && messageToResume.thread_supabase_id) {
+          console.log(
+            `[${cleanupTimestamp}] [FE] Resumption complete, performing final sync.`
+          );
+          syncThreadWithAttachments(messageToResume.thread_supabase_id);
+        }
+      };
 
-    // Polling loop is now directly part of resumeStream
-    (async () => {
+      let isCancelled = false;
+      const pollInterval = 2000;
+      let lastContentLength = -1;
+      let stablePolls = 0;
+
+      // Polling loop is now directly part of resumeStream
+      (async () => {
         while (!isCancelled) {
           try {
             const response = await fetch(
@@ -747,22 +873,23 @@ export default function ChatPage() {
             }
 
             if (data.status === "complete" || data.status === "expired") {
-              console.log(`[FE] Received final status: "${data.status}". Finalizing.`);
+              console.log(
+                `[FE] Received final status: "${data.status}". Finalizing.`
+              );
               cleanup(true); // Final update is done, now cleanup and sync.
               break; // Exit the polling loop
             }
 
             // If still streaming, wait and poll again
             await new Promise((resolve) => setTimeout(resolve, pollInterval));
-             
           } catch (error) {
             console.error(`[FE] Error during poll:`, error);
             cleanup(false); // Cleanup without sync on error
             break;
           }
-        } 
+        }
       })();
-  };
+    };
 
     const inFlightId = sessionStorage.getItem("inFlightAssistantMessageId");
 
@@ -775,7 +902,7 @@ export default function ChatPage() {
   // Simple title generation fallback
   async function generateTitleFromPrompt(
     prompt: string,
-    maxLength: number,
+    maxLength: number
   ): Promise<string | null> {
     return prompt ? prompt.slice(0, maxLength) : "New Chat";
   }
@@ -809,12 +936,11 @@ export default function ChatPage() {
                 file_url: {
                   url,
                   mime_type: mimeType,
-                  file_name: attachment.file_name
+                  file_name: attachment.file_name,
                 },
               });
             }
           });
-
 
           return { role: m.role, content: contentArray };
         }
@@ -912,7 +1038,9 @@ Present code in Markdown code blocks with the correct language extension indicat
           const startIndexToDelete = assistantMessageToUpdate
             ? editedMessageIndex + 2
             : editedMessageIndex + 1;
-          const messagesToDelete = allMessagesInThread.slice(startIndexToDelete);
+          const messagesToDelete = allMessagesInThread.slice(
+            startIndexToDelete
+          );
 
           for (const msgToDelete of messagesToDelete) {
             if (msgToDelete.id) {
@@ -1014,7 +1142,6 @@ Present code in Markdown code blocks with the correct language extension indicat
         setIsSending(false);
         // Always sync the thread after an edit operation completes or fails.
         if (editingMessage?.thread_supabase_id) {
-       
           const finalThreadData = await db.threads
             .where("supabase_id")
             .equals(editingMessage.thread_supabase_id)
@@ -1037,11 +1164,11 @@ Present code in Markdown code blocks with the correct language extension indicat
               const messagesToUpsert = [];
               if (editedUserMessage) messagesToUpsert.push(editedUserMessage);
               if (updatedAssistantMessage)
-              messagesToUpsert.push(updatedAssistantMessage);
+                messagesToUpsert.push(updatedAssistantMessage);
               await syncEditOperationToBackend({
                 threadSupabaseId: editingMessage.thread_supabase_id,
                 messagesToUpsert,
-                idsToDelete: idsToDelete, 
+                idsToDelete: idsToDelete,
               });
             } catch (syncError) {
               console.error(
@@ -1055,7 +1182,7 @@ Present code in Markdown code blocks with the correct language extension indicat
           }
         }
       }
-      return; 
+      return;
     }
 
     isSubmittingRef.current = true;
@@ -1100,10 +1227,10 @@ Present code in Markdown code blocks with the correct language extension indicat
           modifications.title =
             (await generateTitleFromPrompt(input, 50)) || "New Chat";
         }
-        
+
         await db.threads
-            .where({ supabase_id: currentSupabaseThreadId })
-            .modify(modifications);
+          .where({ supabase_id: currentSupabaseThreadId })
+          .modify(modifications);
       }
 
       // File Upload Logic
@@ -1161,7 +1288,6 @@ Present code in Markdown code blocks with the correct language extension indicat
         assistantMessageSupabaseId
       );
 
-      
       // Clear inputs from UI
       setInput("");
       setAttachedFiles([]);
@@ -1234,7 +1360,7 @@ Present code in Markdown code blocks with the correct language extension indicat
       setIsSending(false);
       sessionStorage.removeItem("inFlightAssistantMessageId");
       isSubmittingRef.current = false;
-      
+
       // Sync after the operation completes or fails.
       if (currentSupabaseThreadId) {
         try {
@@ -1324,126 +1450,138 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
   // --- END HELPER FUNCTIONS ---
 
-  const handleRegenerate = React.useCallback(async (msg: Message) => {
-    if (!messages || !msg.id || isSending) return;
-    const index = messages.findIndex((m) => m.id === msg.id);
-    if (index === -1) return;
+  const handleRegenerate = React.useCallback(
+    async (msg: Message) => {
+      if (!messages || !msg.id || isSending) return;
+      const index = messages.findIndex((m) => m.id === msg.id);
+      if (index === -1) return;
 
-    const idsToDelete: string[] = [];
-    const threadSupabaseId = msg.thread_supabase_id;
-    const messagesToDelete = messages.slice(index + 1);
-    for (const msgToDelete of messagesToDelete) {
-      if (msgToDelete.id) {
-        if (msgToDelete.supabase_id) {
-          idsToDelete.push(msgToDelete.supabase_id);
-        }
-        await db.messages.delete(msgToDelete.id);
-      }
-    }
-
-    const historyBefore = messages.slice(0, index);
-
-    const modelToUse = msg.model || selectedModel;
-    const currentModelSpec = availableModels.find((m) => m.value === modelToUse);
-    const modelSupportsImagesFlag = currentModelSpec?.supportsImages || false;
-    const historyForAI = buildHistoryForAI(
-      historyBefore,
-      modelSupportsImagesFlag
-    );
-
-   
-
-    setIsSending(true);
-
-    const modelForRegeneration = (msg.model || selectedModel);
-    // Ensure msg.id is valid before updating
-    if (msg.id) {
-      await db.messages.update(msg.id, { content: "", model: modelForRegeneration });
-    }
-
-    let regenerationStreamId = msg.supabase_id;
-    if (!regenerationStreamId) {
-      regenerationStreamId = uuidv4();
-      await db.messages.update(msg.id, { supabase_id: regenerationStreamId });
-    }
-
-    // Set the session storage key to allow resuming the regeneration on refresh.
-    sessionStorage.setItem("inFlightAssistantMessageId", regenerationStreamId);
-
-    try {
-      // Main try for handleRegenerate API call and stream processing
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: modelForRegeneration,
-          messages: historyForAI,
-          useWebSearch:
-            useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
-          assistantMessageId: regenerationStreamId,
-          }),
-      });
-      if (!response.ok || !response.body) throw new Error("API error");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        chunk.split("\n").forEach((line) => {
-          if (line.startsWith("0:")) {
-            try {
-              full += JSON.parse(line.substring(2));
-              if (msg.id) {
-                db.messages.update(msg.id, { content: full });
-              }
-            } catch (e) {
-              console.warn("parse stream line failed", line, e);
-            }
+      const idsToDelete: string[] = [];
+      const threadSupabaseId = msg.thread_supabase_id;
+      const messagesToDelete = messages.slice(index + 1);
+      for (const msgToDelete of messagesToDelete) {
+        if (msgToDelete.id) {
+          if (msgToDelete.supabase_id) {
+            idsToDelete.push(msgToDelete.supabase_id);
           }
-        });
-      } // Closes while loop for stream reading
-      // Correct placement of the catch and finally for the main try block of handleRegenerate
-    } catch (err: any) {
-      console.error("Regenerate error:", err);
-      if (msg.id) {
-        await db.messages.update(msg.id, { content: `Error: ${err.message}` });
-      }
-    } finally {
-      setIsSending(false);
-      sessionStorage.removeItem("inFlightAssistantMessageId");
-      // Sync only the regenerated message to Supabase
-      if (msg.thread_supabase_id && msg.id) {
-        try {
-          // Get the updated message from the database
-          const updatedMessage = await db.messages.get(msg.id);
-          // if (updatedMessage) {
-          //   await syncMessagesToBackend([updatedMessage]);
-          // }
-          
-          const messagesToUpsert = updatedMessage ? [updatedMessage] : [];
-          await syncEditOperationToBackend({
-            threadSupabaseId: msg.thread_supabase_id,
-            messagesToUpsert,
-            idsToDelete: idsToDelete, // Pass the list of IDs to delete
-          });
-        } catch (syncError) {
-          console.error(
-            "Failed to sync regenerated message to Supabase:",
-            syncError
-          );
-          setError(
-            "Message regenerated but failed to sync to cloud. Your changes are saved locally."
-          );
+          await db.messages.delete(msgToDelete.id);
         }
       }
-    }
-  }, [messages, selectedModel, availableModels, useWebSearch, isSending]); // End of handleRegenerate
+
+      const historyBefore = messages.slice(0, index);
+
+      const modelToUse = msg.model || selectedModel;
+      const currentModelSpec = availableModels.find(
+        (m) => m.value === modelToUse
+      );
+      const modelSupportsImagesFlag = currentModelSpec?.supportsImages || false;
+      const historyForAI = buildHistoryForAI(
+        historyBefore,
+        modelSupportsImagesFlag
+      );
+
+      setIsSending(true);
+
+      const modelForRegeneration = msg.model || selectedModel;
+      // Ensure msg.id is valid before updating
+      if (msg.id) {
+        await db.messages.update(msg.id, {
+          content: "",
+          model: modelForRegeneration,
+        });
+      }
+
+      let regenerationStreamId = msg.supabase_id;
+      if (!regenerationStreamId) {
+        regenerationStreamId = uuidv4();
+        await db.messages.update(msg.id, {
+          supabase_id: regenerationStreamId,
+        });
+      }
+
+      // Set the session storage key to allow resuming the regeneration on refresh.
+      sessionStorage.setItem(
+        "inFlightAssistantMessageId",
+        regenerationStreamId
+      );
+
+      try {
+        // Main try for handleRegenerate API call and stream processing
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: modelForRegeneration,
+            messages: historyForAI,
+            useWebSearch:
+              useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
+            assistantMessageId: regenerationStreamId,
+          }),
+        });
+        if (!response.ok || !response.body) throw new Error("API error");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let full = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          chunk.split("\n").forEach((line) => {
+            if (line.startsWith("0:")) {
+              try {
+                full += JSON.parse(line.substring(2));
+                if (msg.id) {
+                  db.messages.update(msg.id, { content: full });
+                }
+              } catch (e) {
+                console.warn("parse stream line failed", line, e);
+              }
+            }
+          });
+        } // Closes while loop for stream reading
+        // Correct placement of the catch and finally for the main try block of handleRegenerate
+      } catch (err: any) {
+        console.error("Regenerate error:", err);
+        if (msg.id) {
+          await db.messages.update(msg.id, {
+            content: `Error: ${err.message}`,
+          });
+        }
+      } finally {
+        setIsSending(false);
+        sessionStorage.removeItem("inFlightAssistantMessageId");
+        // Sync only the regenerated message to Supabase
+        if (msg.thread_supabase_id && msg.id) {
+          try {
+            // Get the updated message from the database
+            const updatedMessage = await db.messages.get(msg.id);
+            // if (updatedMessage) {
+            //   await syncMessagesToBackend([updatedMessage]);
+            // }
+
+            const messagesToUpsert = updatedMessage ? [updatedMessage] : [];
+            await syncEditOperationToBackend({
+              threadSupabaseId: msg.thread_supabase_id,
+              messagesToUpsert,
+              idsToDelete: idsToDelete, // Pass the list of IDs to delete
+            });
+          } catch (syncError) {
+            console.error(
+              "Failed to sync regenerated message to Supabase:",
+              syncError
+            );
+            setError(
+              "Message regenerated but failed to sync to cloud. Your changes are saved locally."
+            );
+          }
+        }
+      }
+    },
+    [messages, selectedModel, availableModels, useWebSearch, isSending]
+  ); // End of handleRegenerate
 
   const handleBranch = React.useCallback(
     async (messageToBranchFrom: Message) => {
-
       if (!user || !user.id || isSending) return;
 
       setIsSending(true);
@@ -1616,14 +1754,16 @@ Present code in Markdown code blocks with the correct language extension indicat
   };
 
   // Ensure glass effect is initialized on mount (for SSR/React hydration)
-useEffect(() => {
-  if (typeof window !== 'undefined' && window.liquidGlassManager) {
-    document.querySelectorAll('.liquid-glass').forEach(element => {
-      const options = JSON.parse(element.getAttribute('data-glass-options') || '{}');
-      window.liquidGlassManager.register(element, options);
-    });
-  }
-}, []);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.liquidGlassManager) {
+      document.querySelectorAll(".liquid-glass").forEach((element) => {
+        const options = JSON.parse(
+          element.getAttribute("data-glass-options") || "{}"
+        );
+        window.liquidGlassManager.register(element, options);
+      });
+    }
+  }, []);
 
   // --- RENDER ---
   if (isLoadingModels || !isUserLoaded) {
@@ -1645,15 +1785,17 @@ useEffect(() => {
         </div>
         {user && (
           <div className="flex items-center space-x-3 text-white">
-            <UserButton 
+            <UserButton
               appearance={{
                 elements: {
                   avatarBox: "w-8 h-8",
-                  userButtonPopoverCard: "bg-gray-900/95 backdrop-blur border border-gray-700",
-                  userButtonPopoverActionButton: "text-white hover:bg-gray-700",
+                  userButtonPopoverCard:
+                    "bg-gray-900/95 backdrop-blur border border-gray-700",
+                  userButtonPopoverActionButton:
+                    "text-white hover:bg-gray-700",
                   userButtonPopoverActionButtonText: "text-white",
-                  userButtonPopoverFooter: "hidden"
-                }
+                  userButtonPopoverFooter: "hidden",
+                },
               }}
             />
           </div>
@@ -1738,216 +1880,215 @@ useEffect(() => {
           </div>
         )}
 
-
         <div className="pt-8 pb-0 md:pb-6">
-          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">          
-           
+          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
             <LiquidGlass className="rounded-2xl p-4 shadow-2xl flex flex-col">
-              
               <LiquidGlass.Foreground>
                 {editingMessage && (
-                <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-blue-300 text-sm font-medium">
-                      Editing message...
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 rounded-md hover:bg-blue-500/10 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-                <textarea
-                ref={textareaRef}
-                className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
-                value={input}
-                placeholder="Ask anything..."
-                onChange={(e) => setInput(e.target.value)}
-                disabled={isSending}
-                rows={isTextareaExpanded ? 4 : 2}
-                style={{ minHeight: isTextareaExpanded ? "4rem" : "2.5rem", maxHeight: "8rem" }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e as any);
-                  } else if (e.key === "Escape" && editingMessage) {
-                    e.preventDefault();
-                    handleCancelEdit();
-                  }
-                }}
-              />
-
-              {attachedFiles.length > 0 && (
-                <div className="mb-3 p-3 frosted-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {attachedFiles.map((file, index) => (
-                    <div key={index} className="relative group">
-                      {attachedPreviews[index] ? (
-                        <img
-                          src={attachedPreviews[index]}
-                          alt="Preview"
-                          className="w-full h-24 object-cover rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-full h-24 frosted-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
-                          <span className="text-gray-300 text-xs font-medium text-center truncate w-full">
-                            {file.name}
-                          </span>
-                          <span className="text-gray-400 text-xs mt-1">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
-                          </span>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeAttachedFile(index)}
-                        className="absolute top-1 right-1 text-white bg-black/60 backdrop-filter backdrop-blur-sm hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-                        title="Remove file"
-                      >
-                        <XSquare />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    style={{ display: "none" }}
-                    multiple
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isSending || editingMessage !== null}
-                    className="text-gray-400 hover:text-white transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Attach file"
-                  >
-                    <Paperclip />
-                  </button>
-
-                  <div className="flex items-center gap-3">
-                    {/* Model Selector */}
+                  <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        /*
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span className="text-blue-300 text-sm font-medium">
+                        Editing message...
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 rounded-md hover:bg-blue-500/10 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  ref={textareaRef}
+                  className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4"
+                  value={input}
+                  placeholder="Ask anything..."
+                  onChange={(e) => setInput(e.target.value)}
+                  disabled={isSending}
+                  rows={isTextareaExpanded ? 4 : 2}
+                  style={{
+                    minHeight: isTextareaExpanded ? "4rem" : "2.5rem",
+                    maxHeight: "8rem",
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e as any);
+                    } else if (e.key === "Escape" && editingMessage) {
+                      e.preventDefault();
+                      handleCancelEdit();
+                    }
+                  }}
+                />
+
+                {attachedFiles.length > 0 && (
+                  <div className="mb-3 p-3 frosted-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {attachedFiles.map((file, index) => (
+                      <div key={index} className="relative group">
+                        {attachedPreviews[index] ? (
+                          <img
+                            src={attachedPreviews[index]}
+                            alt="Preview"
+                            className="w-full h-24 object-cover rounded-lg"
+                          />
+                        ) : (
+                          <div className="w-full h-24 frosted-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
+                            <span className="text-gray-300 text-xs font-medium text-center truncate w-full">
+                              {file.name}
+                            </span>
+                            <span className="text-gray-400 text-xs mt-1">
+                              {(file.size / 1024 / 1024).toFixed(2)} MB
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachedFile(index)}
+                          className="absolute top-1 right-1 text-white bg-black/60 backdrop-filter backdrop-blur-sm hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                          title="Remove file"
+                        >
+                          <XSquare />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      style={{ display: "none" }}
+                      multiple
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSending || editingMessage !== null}
+                      className="text-gray-400 hover:text-white transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Attach file"
+                    >
+                      <Paperclip />
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      {/* Model Selector */}
+                      <div className="flex items-center space-x-2">
+                        <select
+                          value={selectedModel}
+                          onChange={(e) => setSelectedModel(e.target.value)}
+                          /*
                           Responsive sizing:
                           - Default (mobile): tighter padding, smaller text, truncate long labels.
                           - md and up: original spacing / font.
                         */
-                        className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
-                        disabled={
-                          isLoadingModels || availableModels.length === 0
-                        }
-                      >
-                        {isLoadingModels && (
-                          <option
-                            value=""
-                            className="bg-gray-800 text-white"
-                          >
-                            Loading models...
-                          </option>
-                        )}
-                        {!isLoadingModels && availableModels.length === 0 && (
-                          <option
-                            value=""
-                            className="bg-gray-800 text-white"
-                          >
-                            No models available
-                          </option>
-                        )}
-                        {availableModels.map((m) => (
-                          <option
-                            key={m.value}
-                            value={m.value}
-                            className="bg-gray-800 text-white"
-                          >
-                            {m.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Web Search Toggle */}
-                    {currentModelSupportsWebSearch() && (
-                      <div className="flex items-center space-x-3">
-                        <div className="group relative">
-                          <button
-                            type="button"
-                            onClick={handleWebSearchToggle}
-                            className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
-                              useWebSearch
-                                ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                                : "frosted-button-sidebar text-white/70 hover:text-white"
-                            }`}
-                            title={
-                              useWebSearch
-                                ? "Disable web search"
-                                : "Enable web search"
-                            }
-                          >
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth="2"
+                          className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
+                          disabled={
+                            isLoadingModels || availableModels.length === 0
+                          }
+                        >
+                          {isLoadingModels && (
+                            <option
+                              value=""
+                              className="bg-gray-800 text-white"
                             >
-                              <circle cx="12" cy="12" r="10" />
-                              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-                              <path d="M2 12h20" />
-                            </svg>
-                          </button>
-                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                            {useWebSearch
-                              ? "Disable web search"
-                              : "Enable real-time web search"}
+                              Loading models...
+                            </option>
+                          )}
+                          {!isLoadingModels &&
+                            availableModels.length === 0 && (
+                              <option
+                                value=""
+                                className="bg-gray-800 text-white"
+                              >
+                                No models available
+                              </option>
+                            )}
+                          {availableModels.map((m) => (
+                            <option
+                              key={m.value}
+                              value={m.value}
+                              className="bg-gray-800 text-white"
+                            >
+                              {m.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Web Search Toggle */}
+                      {currentModelSupportsWebSearch() && (
+                        <div className="flex items-center space-x-3">
+                          <div className="group relative">
+                            <button
+                              type="button"
+                              onClick={handleWebSearchToggle}
+                              className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                                useWebSearch
+                                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                                  : "frosted-button-sidebar text-white/70 hover:text-white"
+                              }`}
+                              title={
+                                useWebSearch
+                                  ? "Disable web search"
+                                  : "Enable web search"
+                              }
+                            >
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                strokeWidth="2"
+                              >
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                                <path d="M2 12h20" />
+                              </svg>
+                            </button>
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                              {useWebSearch
+                                ? "Disable web search"
+                                : "Enable real-time web search"}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={
-                    isSending || (!input.trim() && attachedFiles.length === 0)
-                  }
-                  className="w-10 h-10 flex items-center justify-center bg-white hover:bg-gray-200 disabled:bg-gray-500 text-black rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-                  title={editingMessage ? "Update message" : "Send message"}
-                >
-                  {isSending ? (
-                    <div className="animate-spin">
-                      <Loader2 />
+                      )}
                     </div>
-                  ) : editingMessage ? (
-                    <span className="text-sm font-medium">Update</span>
-                  ) : (
-                    <SendHorizonal />
-                  )}
-                </button>
-              </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      isSending || (!input.trim() && attachedFiles.length === 0)
+                    }
+                    className="w-10 h-10 flex items-center justify-center bg-white hover:bg-gray-200 disabled:bg-gray-500 text-black rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                    title={editingMessage ? "Update message" : "Send message"}
+                  >
+                    {isSending ? (
+                      <div className="animate-spin">
+                        <Loader2 />
+                      </div>
+                    ) : editingMessage ? (
+                      <span className="text-sm font-medium">Update</span>
+                    ) : (
+                      <SendHorizonal />
+                    )}
+                  </button>
+                </div>
               </LiquidGlass.Foreground>
-              
             </LiquidGlass>
-            
           </form>
         </div>
       </div>
     </div>
   );
-};
+}
 
 // Declare global types
 declare global {
