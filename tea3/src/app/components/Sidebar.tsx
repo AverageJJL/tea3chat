@@ -952,7 +952,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
                     <div className="space-y-1">
                       {pinnedThreads.length > 0 && (
                         <div className="mb-4">
-                          <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-white/60">
+                          <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-indigo-400">
                             Pinned
                           </h2>
                           <div className="space-y-1">
@@ -968,7 +968,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
 
                         return (
                           <div key={group} className="mb-4">
-                            <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-white/60">
+                            <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-indigo-400">
                               {group}
                             </h2>
                             <div className="space-y-1">
