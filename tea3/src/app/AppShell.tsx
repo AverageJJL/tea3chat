@@ -77,7 +77,7 @@ export default function AppShell() {
   if (!isLoaded) return null;
 
   return (
-    <div className="flex h-screen w-screen bg-gray-900">
+    <div className="flex h-screen w-screen">
       {user && <Sidebar userId={user.id} onNewChat={handleNewChat} />}
       <div className="flex-grow flex flex-col">
         <Outlet context={{ 

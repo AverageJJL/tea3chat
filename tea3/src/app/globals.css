@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
@@ -6,8 +7,13 @@
 @tailwind utilities;
 
 /* Custom styles for modern chat interface */
+html,
+body,
+#root {
+  background: #3a3d4f;
+}
+
 .chat-container {
-  background: #374151;
   position: relative;
   overflow: hidden;
   /* background-image: url('https://www.publicdomainpictures.net/pictures/610000/velka/seamless-floral-wallpaper-art-1715193626Gct.jpg'); */
@@ -15,7 +21,7 @@
   background-size: auto;
   background-repeat: repeat;
   background-position: center;
-  animation: moveBackground 60s linear infinite;
+  /* animation: moveBackground 60s linear infinite; */
 
 }
 
@@ -39,15 +45,32 @@
   background: none;
   pointer-events: none;
 }
-/* Former .glass-effect renamed to .frosted-glass */
+
 .frosted-glass {
+  position: relative; /* Establishes a positioning context for the pseudo-element */
+  z-index: 0; /* Ensures proper stacking */
+  transition: transform 0.3s cubic-bezier(0.4, 0.2, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0.2, 0.2, 1);
+
+}
+
+.frosted-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0; /* Covers the entire parent element (top, right, bottom, left = 0) */
+  z-index: -1; /* Places the pseudo-element BEHIND the parent's content */
+
+  /* Move all the visual styles to the pseudo-element */
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  will-change: transform;
-  transform: translateZ(0);
+
+  /* Inherit the border-radius from the parent .frosted-glass container */
+  border-radius: inherit;
 }
 
+.frosted-glass:hover {
+  transform: translateY(-8px) scale(1.02);
+}
 .frosted-sidebar {
   background: rgba(31, 41, 55, 0.8);
   backdrop-filter: blur(12px);
@@ -134,6 +157,34 @@
 
 .custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
+}
+
+.chat-textarea {
+  min-height: 2.5rem; /* The initial height, approx. 2 rows */
+  max-height: 15rem; /* The maximum height before scrolling begins */
+  overflow-y: auto; /* Show scrollbar only when max-height is exceeded */
+}
+
+/* Custom, cleaner scrollbar for the chat textarea */
+.chat-textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+/* Make the scrollbar track (the background) invisible */
+.chat-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Style the scrollbar thumb (the draggable part) */
+.chat-textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.chat-textarea::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.4);
 }
 
 /* Button hover effects */

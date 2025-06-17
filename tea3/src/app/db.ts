@@ -20,6 +20,7 @@ export interface UserPreferences {
   traits?: string[];
   customInstructions?: string;
   disableResumableStream?: boolean;
+  useLiquidGlass?: boolean;
 }
 
 export interface MessageAttachment { 

@@ -3,7 +3,7 @@
 
 .obsidian-theme {
   /* Font settings similar to Obsidian's default */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 18px; /* A comfortable reading size */
   line-height: 1.7; /* Generous line spacing for readability */

@@ -792,10 +792,10 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
           </button>
         )}
         <div
-          className={`relative flex h-full shrink-0 flex-col border-r border-gray-600/30 bg-gray-700/40 backdrop-blur-xl transition-all duration-300 ease-in-out ${
-            isCollapsed ? "w-0" : "w-72"
-          }`}
-        >
+            className={`relative flex h-full shrink-0 flex-col border-gray-600/30 bg-[#000000]/40 backdrop-blur-xl transition-all duration-300 ease-in-out rounded-r-2xl ${
+              isCollapsed ? "w-0" : "w-72"
+            }`}
+          >
           {!isCollapsed && (
             <div className="flex h-full flex-col">
               <div className="flex h-20 shrink-0 items-center justify-between px-4">
@@ -865,8 +865,8 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
         </button>
       )}
       <div
-        className={`relative flex h-full shrink-0 flex-col border-r border-gray-600/30 bg-gray-700/40 backdrop-blur-xl transition-all duration-300 ease-in-out ${
-          isCollapsed ? "w-0" : "w-68"
+        className={`relative flex h-full shrink-0 flex-col border-gray-600/30 bg-[#000000]/40 backdrop-blur-xl transition-all duration-300 ease-in-out rounded-r-2xl ${
+          isCollapsed ? "w-0" : "w-80"
         }`}
       >
         {!isCollapsed && (
@@ -952,7 +952,10 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
                     <div className="space-y-1">
                       {pinnedThreads.length > 0 && (
                         <div className="mb-4">
-                          <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-indigo-400">
+                          <h2
+                            className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide"
+                            style={{ color: "#C8ACD6" }}
+                          >
                             Pinned
                           </h2>
                           <div className="space-y-1">
@@ -968,7 +971,8 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
 
                         return (
                           <div key={group} className="mb-4">
-                            <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide text-indigo-400">
+                            <h2 className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-wide"
+                              style={{ color: "#C8ACD6" }}>
                               {group}
                             </h2>
                             <div className="space-y-1">

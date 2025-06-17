@@ -516,7 +516,6 @@ const MessageRow = React.memo(
         ) : (
           <div className="max-w-4xl relative pb-8">
             <div className="frosted-glass rounded-2xl px-6 py-4 shadow-lg">
-              {/* START: FIX - Added Attachment Rendering Logic */}
               {message.attachments && message.attachments.length > 0 && (
                 <div className="mb-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {message.attachments.map((att, index) => (
@@ -550,7 +549,6 @@ const MessageRow = React.memo(
                   ))}
                 </div>
               )}
-              {/* END: FIX - Added Attachment Rendering Logic */}
 
               {/* Only render the content paragraph if there is content */}
               {message.content && (
@@ -739,24 +737,14 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Auto-expand / collapse based on the number of lines in the textarea.
-  // This avoids relying on scroll measurements that can be distorted by the
-  // element's "rows" attribute, ensuring it collapses properly when the
-  // content becomes short again.
   React.useEffect(() => {
     const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    // Count how many logical lines the user has (line breaks + 1)
-    const lineCount = (textarea.value.match(/\n/g) || []).length + 1;
-
-    // Expand when more than 2 lines are present, otherwise collapse
-    const needsExpansion = lineCount > 2;
-
-    // Update state only if it changed to prevent redundant renders
-    setIsTextareaExpanded((prev) =>
-      prev !== needsExpansion ? needsExpansion : prev
-    );
+    if (textarea) {
+      // Reset height to allow the textarea to shrink when text is deleted
+      textarea.style.height = "auto";
+      // Set the height to its scroll height to fit the content perfectly
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
   }, [input]);
 
   // --- DATA FETCHING & SYNC ---
@@ -1853,6 +1841,199 @@ export default function ChatPage() {
     );
   }
 
+const ChatInputContent = (
+    <>
+      {editingMessage && (
+        <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-blue-300 text-sm font-medium">
+              Editing message...
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            className="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 rounded-md hover:bg-blue-500/10 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      <textarea
+        ref={textareaRef}
+        className="chat-textarea w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4 px-4" // Added "chat-textarea" class
+        value={input}
+        placeholder="Ask anything..."
+        onChange={(e) => setInput(e.target.value)}
+        disabled={isSending}
+        rows={2} // Set a base of 2 rows for the initial size
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e as any);
+          } else if (e.key === "Escape" && editingMessage) {
+            e.preventDefault();
+            handleCancelEdit();
+          }
+        }}
+      />
+
+      {attachedFiles.length > 0 && (
+        <div className="mb-3 p-3 frosted-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {attachedFiles.map((file, index) => (
+            <div key={index} className="relative group">
+              {attachedPreviews[index] ? (
+                <img
+                  src={attachedPreviews[index]}
+                  alt="Preview"
+                  className="w-full h-24 object-cover rounded-lg"
+                />
+              ) : (
+                <div className="w-full h-24 frosted-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
+                  <span className="text-gray-300 text-xs font-medium text-center truncate w-full">
+                    {file.name}
+                  </span>
+                  <span className="text-gray-400 text-xs mt-1">
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeAttachedFile(index)}
+                className="absolute top-1 right-1 text-white bg-black/60 backdrop-filter backdrop-blur-sm hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                title="Remove file"
+              >
+                <XSquare />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            style={{ display: "none" }}
+            multiple
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSending || editingMessage !== null}
+            className="text-gray-400 hover:text-white transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Attach file"
+          >
+            <Paperclip />
+          </button>
+
+          <div className="flex items-center gap-3">
+            {/* Model Selector */}
+            <div className="flex items-center space-x-2">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
+                disabled={isLoadingModels || availableModels.length === 0}
+              >
+                {isLoadingModels && (
+                  <option value="" className="bg-gray-800 text-white">
+                    Loading models...
+                  </option>
+                )}
+                {!isLoadingModels && availableModels.length === 0 && (
+                  <option value="" className="bg-gray-800 text-white">
+                    No models available
+                  </option>
+                )}
+                {availableModels.map((m) => (
+                  <option
+                    key={m.value}
+                    value={m.value}
+                    className="bg-gray-800 text-white"
+                  >
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Web Search Toggle */}
+            {currentModelSupportsWebSearch() && (
+              <div className="flex items-center space-x-3">
+                <div className="group relative">
+                  <button
+                    type="button"
+                    onClick={handleWebSearchToggle}
+                    className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                      useWebSearch
+                        ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                        : "frosted-button-sidebar text-white/70 hover:text-white"
+                    }`}
+                    title={
+                      useWebSearch
+                        ? "Disable web search"
+                        : "Enable web search"
+                    }
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                      <path d="M2 12h20" />
+                    </svg>
+                  </button>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                    {useWebSearch
+                      ? "Disable web search"
+                      : "Enable real-time web search"}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          type={isSending ? "button" : "submit"}
+          onClick={isSending ? handleStopGeneration : undefined}
+          disabled={
+            !isSending && (!input.trim() && attachedFiles.length === 0)
+          }
+          className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors focus:outline-none shadow-lg hover:shadow-xl ${
+            isSending
+              ? "frosted-button-sidebar text-white"
+              : "bg-white hover:bg-gray-200 text-black disabled:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+          }`}
+          title={
+            isSending
+              ? "Stop generating"
+              : editingMessage
+              ? "Update message"
+              : "Send message"
+          }
+        >
+          {isSending ? (
+            <XSquare />
+          ) : editingMessage ? (
+            <span className="text-sm font-medium">Update</span>
+          ) : (
+            <SendHorizonal />
+          )}
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="chat-container flex-grow flex flex-col relative">
       {/* UserButton positioned absolutely in the top right corner */}
@@ -1944,7 +2125,7 @@ export default function ChatPage() {
       </div>
 
       {/* Chatbar wrapper: flush to bottom on mobile, slight gap on md+ */}
-      <div className="absolute bottom-0 md:bottom-2 left-5 right-5 z-20">
+      <div className="absolute bottom-0 md:bottom-2 left-10 right-10 z-20">
         {/* Scroll to bottom button - positioned above chatbar */}
         {showScrollButton && (
           <div className="flex justify-center mb-3">
@@ -1973,216 +2154,17 @@ export default function ChatPage() {
 
         <div className="pt-8 pb-0 md:pb-6">
           <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
-            <LiquidGlass className="rounded-2xl p-4 shadow-2xl flex flex-col">
-              <LiquidGlass.Foreground>
-                {editingMessage && (
-                  <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                      <span className="text-blue-300 text-sm font-medium">
-                        Editing message...
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCancelEdit}
-                      className="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 rounded-md hover:bg-blue-500/10 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-                <textarea
-                  ref={textareaRef}
-                  className="w-full bg-transparent text-white placeholder-gray-400 resize-none focus:outline-none text-lg leading-relaxed transition-all mb-4 px-4"
-                  value={input}
-                  placeholder="Ask anything..."
-                  onChange={(e) => setInput(e.target.value)}
-                  disabled={isSending}
-                  rows={isTextareaExpanded ? 4 : 2}
-                  style={{
-                    minHeight: isTextareaExpanded ? "4rem" : "2.5rem",
-                    maxHeight: "8rem",
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit(e as any);
-                    } else if (e.key === "Escape" && editingMessage) {
-                      e.preventDefault();
-                      handleCancelEdit();
-                    }
-                  }}
-                />
-
-                {attachedFiles.length > 0 && (
-                  <div className="mb-3 p-3 frosted-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {attachedFiles.map((file, index) => (
-                      <div key={index} className="relative group">
-                        {attachedPreviews[index] ? (
-                          <img
-                            src={attachedPreviews[index]}
-                            alt="Preview"
-                            className="w-full h-24 object-cover rounded-lg"
-                          />
-                        ) : (
-                          <div className="w-full h-24 frosted-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
-                            <span className="text-gray-300 text-xs font-medium text-center truncate w-full">
-                              {file.name}
-                            </span>
-                            <span className="text-gray-400 text-xs mt-1">
-                              {(file.size / 1024 / 1024).toFixed(2)} MB
-                            </span>
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeAttachedFile(index)}
-                          className="absolute top-1 right-1 text-white bg-black/60 backdrop-filter backdrop-blur-sm hover:bg-red-500/80 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-                          title="Remove file"
-                        >
-                          <XSquare />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      style={{ display: "none" }}
-                      multiple
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isSending || editingMessage !== null}
-                      className="text-gray-400 hover:text-white transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Attach file"
-                    >
-                      <Paperclip />
-                    </button>
-
-                    <div className="flex items-center gap-3">
-                      {/* Model Selector */}
-                      <div className="flex items-center space-x-2">
-                        <select
-                          value={selectedModel}
-                          onChange={(e) => setSelectedModel(e.target.value)}
-                          /*
-                          Responsive sizing:
-                          - Default (mobile): tighter padding, smaller text, truncate long labels.
-                          - md and up: original spacing / font.
-                        */
-                          className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
-                          disabled={
-                            isLoadingModels || availableModels.length === 0
-                          }
-                        >
-                          {isLoadingModels && (
-                            <option
-                              value=""
-                              className="bg-gray-800 text-white"
-                            >
-                              Loading models...
-                            </option>
-                          )}
-                          {!isLoadingModels &&
-                            availableModels.length === 0 && (
-                              <option
-                                value=""
-                                className="bg-gray-800 text-white"
-                              >
-                                No models available
-                              </option>
-                            )}
-                          {availableModels.map((m) => (
-                            <option
-                              key={m.value}
-                              value={m.value}
-                              className="bg-gray-800 text-white"
-                            >
-                              {m.displayName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Web Search Toggle */}
-                      {currentModelSupportsWebSearch() && (
-                        <div className="flex items-center space-x-3">
-                          <div className="group relative">
-                            <button
-                              type="button"
-                              onClick={handleWebSearchToggle}
-                              className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
-                                useWebSearch
-                                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                                  : "frosted-button-sidebar text-white/70 hover:text-white"
-                              }`}
-                              title={
-                                useWebSearch
-                                  ? "Disable web search"
-                                  : "Enable web search"
-                              }
-                            >
-                              <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                strokeWidth="2"
-                              >
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-                                <path d="M2 12h20" />
-                              </svg>
-                            </button>
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                              {useWebSearch
-                                ? "Disable web search"
-                                : "Enable real-time web search"}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type={isSending ? "button" : "submit"}
-                    onClick={isSending ? handleStopGeneration : undefined}
-                    disabled={
-                      !isSending && (!input.trim() && attachedFiles.length === 0)
-                    }
-                    className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors focus:outline-none shadow-lg hover:shadow-xl ${
-                      isSending
-                        ? "frosted-button-sidebar text-white"
-                        : "bg-white hover:bg-gray-200 text-black disabled:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    }`}
-                    title={
-                      isSending
-                        ? "Stop generating"
-                        : editingMessage
-                        ? "Update message"
-                        : "Send message"
-                    }
-                  >
-                    {isSending ? (
-                      <XSquare />
-                    ) : editingMessage ? (
-                      <span className="text-sm font-medium">Update</span>
-                    ) : (
-                      <SendHorizonal />
-                    )}
-                  </button>
-                </div>
-              </LiquidGlass.Foreground>
-            </LiquidGlass>
+            {userPreferences?.useLiquidGlass ? (
+              <LiquidGlass className="rounded-2xl p-4 shadow-2xl flex flex-col">
+                <LiquidGlass.Foreground>
+                  {ChatInputContent}
+                </LiquidGlass.Foreground>
+              </LiquidGlass>
+            ) : (
+              <div className="frosted-glass rounded-2xl p-4 shadow-2xl flex flex-col">
+                {ChatInputContent}
+              </div>
+            )}
           </form>
         </div>
       </div>

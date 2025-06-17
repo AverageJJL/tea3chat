@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, UserPreferences } from "./db";
@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [activeSection, setActiveSection] = useState("account");
   const [disableResumableStream, setDisableResumableStream] = useState(false);
+  const [useLiquidGlass, setUseLiquidGlass] = useState(false);
 
   const userPreferences = useLiveQuery(() => {
     if (!user) return undefined;
@@ -50,6 +51,7 @@ export default function SettingsPage() {
       setDisableResumableStream(
         userPreferences.disableResumableStream ?? false
       );
+      setUseLiquidGlass(userPreferences.useLiquidGlass ?? false);
     }
   }, [userPreferences]);
 
@@ -110,6 +112,35 @@ export default function SettingsPage() {
     } catch (e) {
       setDisableResumableStream(!newValue); // Revert on error
       console.error("Failed to update resumable stream preference", e);
+      setSaveStatus({ message: "Failed to update setting.", type: "error" });
+    }
+  };
+
+  const handleToggleLiquidGlass = async () => {
+    if (!user) return;
+
+    const newValue = !useLiquidGlass;
+    setUseLiquidGlass(newValue); // Optimistic UI update
+
+    try {
+      const existingPrefs = await db.userPreferences
+        .where({ userId: user.id })
+        .first();
+
+      if (existingPrefs?.id) {
+        await db.userPreferences.update(existingPrefs.id, {
+          useLiquidGlass: newValue,
+        });
+      } else {
+        await db.userPreferences.put({
+          userId: user.id,
+          useLiquidGlass: newValue,
+        });
+      }
+      setSaveStatus({ message: "Setting updated!", type: "success" });
+    } catch (e) {
+      setUseLiquidGlass(!newValue); // Revert on error
+      console.error("Failed to update liquid glass preference", e);
       setSaveStatus({ message: "Failed to update setting.", type: "error" });
     }
   };
@@ -207,19 +238,29 @@ export default function SettingsPage() {
 
   return (
     <div className="chat-container flex-grow flex flex-col">
-      <div className="frosted-header p-6 flex justify-between items-center relative z-10 shrink-0">
-        <div className="flex items-center space-x-6">
-          <h1 className="text-2xl font-bold text-white">Settings</h1>
-        </div>
+      <h1 className="text-4xl pb-24 font-bold text-white inline-block align-middle mr-6 mt-6 ml-6">
+        Settings
+      </h1>
         {user && (
-          <div className="text-white">
-            {user.primaryEmailAddress?.emailAddress}
-          </div>
-        )}
-      </div>
+        <div className="absolute top-6 right-6 z-20">
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: "w-8 h-8",
+                userButtonPopoverCard:
+                  "bg-gray-900/95 backdrop-blur border border-gray-700",
+                userButtonPopoverActionButton:
+                  "text-white hover:bg-gray-700",
+                userButtonPopoverActionButtonText: "text-white",
+                userButtonPopoverFooter: "hidden",
+              },
+            }}
+          />
+        </div>
+      )}
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Navigation - Simple Text */}
+      <div className="flex-1 flex overflow-hidden relative">
+       {/* Left Navigation - Simple Text */}
         <div className="w-48 flex-shrink-0 p-6">
           <div className="sticky top-6">
             <nav className="space-y-4">
@@ -252,6 +293,10 @@ export default function SettingsPage() {
                 Coming soon...
               </div>
             </section>
+
+            <div className="py-8">
+              <hr className="my-12 border-t-2 border-white/20 rounded-lg shadow-lg" />
+            </div>
 
             {/* Customization Section */}
             <section id="customization" className="space-y-6 scroll-mt-8">
@@ -374,6 +419,10 @@ export default function SettingsPage() {
               </div>
             </section>
 
+            <div className="py-8">
+              <hr className="my-12 border-t-2 border-white/20 rounded-lg shadow-lg" />
+            </div>
+
             {/* API Keys Section */}
             <section id="api-keys" className="space-y-6 scroll-mt-8">
               <h2 className="text-3xl font-bold text-white">API Keys</h2>
@@ -383,22 +432,65 @@ export default function SettingsPage() {
               </div>
             </section>
 
+            <div className="py-8">
+              <hr className="my-12 border-t-2 border-white/20 rounded-lg shadow-lg" />
+            </div>
+
             {/* Theme Section */}
             <section id="theme" className="space-y-6 scroll-mt-8">
               <h2 className="text-3xl font-bold text-white">Theme</h2>
               <p className="text-white/70">Customize the appearance and visual style of your interface.</p>
+              
+              <div className="flex items-start mt-12 justify-between">
+                <div className="flex-1 mr-6 ">
+                  <label
+                    htmlFor="use-liquid-glass"
+                    className="block text-lg font-medium text-white/90 mb-2"
+                  >
+                    Enable Liquid Glass Effect
+                  </label>
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Turn this on to enable the experimental liquid glass effect
+                    for the chat input. This may impact performance.
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleToggleLiquidGlass}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-transparent ${
+                      useLiquidGlass
+                        ? "bg-blue-600 shadow-lg shadow-blue-500/25"
+                        : "bg-white/20 backdrop-blur-sm border border-white/30"
+                    }`}
+                    id="use-liquid-glass"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out shadow-lg ${
+                        useLiquidGlass ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+              
               <div className="h-64 flex items-center justify-center text-white/50 frosted-glass rounded-xl">
                 Coming soon...
               </div>
             </section>
 
+            <div className="py-8">
+              <hr className="my-12 border-t-2 border-white/20 rounded-lg shadow-lg" />
+            </div>
+
+
             {/* Site Settings Section */}
-            <section id="site-settings" className="space-y-6 scroll-mt-8">
+            <section id="site-settings" className="space-y-6 scroll-mt-8 mb-96 pb-32">
               <h2 className="text-3xl font-bold text-white">Site Settings</h2>
               <p className="text-white/70">Adjust global site preferences and behavior.</p>
               
               {/* Resumable Stream Toggle */}
-              <div className="flex items-start justify-between">
+              <div className="flex items-start mt-12 justify-between">
                 <div className="flex-1 mr-6">
                   <label htmlFor="disable-resumable-stream" className="block text-lg font-medium text-white/90 mb-2">
                     Disable Resumable Stream
@@ -408,6 +500,7 @@ export default function SettingsPage() {
                     When enabled, responses will appear more quickly but cannot be resumed if interrupted.
                   </p>
                 </div>
+               
                 <div className="flex-shrink-0">
                   <button
                     type="button"

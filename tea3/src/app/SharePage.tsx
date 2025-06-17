@@ -99,7 +99,7 @@ export default function SharePage() {
         const newThreadForCurrentUser: Thread = {
           supabase_id: newThreadSupabaseId,
           userId: user.id,
-          title: `[Shared] ${sharedData.title}`,
+          title: `${sharedData.title}`,
           createdAt: new Date(),
           updatedAt: new Date(),
           forked_from_id: sharedThreadId, // Add this field
