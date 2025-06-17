@@ -17,11 +17,29 @@ export default function SettingsPage() {
   const [currentTrait, setCurrentTrait] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
   const [saveStatus, setSaveStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [activeSection, setActiveSection] = useState("account");
+  const [disableResumableStream, setDisableResumableStream] = useState(false);
 
   const userPreferences = useLiveQuery(() => {
     if (!user) return undefined;
     return db.userPreferences.where({ userId: user.id }).first();
   }, [user]);
+
+  const navigationSections = [
+    { id: "account", label: "Account" },
+    { id: "customization", label: "Customization" },
+    { id: "api-keys", label: "API Keys" },
+    { id: "theme", label: "Theme" },
+    { id: "site-settings", label: "Site Settings" }
+  ];
+
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActiveSection(sectionId);
+    }
+  };
 
   useEffect(() => {
     if (userPreferences) {
@@ -118,6 +136,27 @@ export default function SettingsPage() {
     };
   }, [navigate, location.state]);
 
+  // Intersection Observer to track which section is in view
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+          }
+        });
+      },
+      { rootMargin: '-45% 0px -60% 0px' }
+    );
+
+    navigationSections.forEach((section) => {
+      const element = document.getElementById(section.id);
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, [navigationSections]);
+
   if (!isLoaded) {
     return (
       <div className="chat-container h-screen w-screen flex items-center justify-center">
@@ -141,126 +180,217 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative">
-        <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
-          <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-white">Customize Tweak3 Chat</h2>
-            
-            {/* Name */}
-            <div>
-              <label htmlFor="name" className="block text-lg font-medium text-white/90 mb-3">
-                What should Tweak3 Chat call you?
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="name"
-                  placeholder="Enter your name"
-                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={50}
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{name.length}/50</span>
-              </div>
-            </div>
-
-            {/* Role */}
-            <div>
-              <label htmlFor="role" className="block text-lg font-medium text-white/90 mb-3">
-                What do you do?
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="role"
-                  placeholder="Engineer, student, etc."
-                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  maxLength={50}
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{role.length}/50</span>
-              </div>
-            </div>
-
-            {/* Traits */}
-            <div>
-              <label htmlFor="traits" className="block text-lg font-medium text-white/90 mb-3">
-                What traits should Tweak3 Chat have?
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="traits"
-                  placeholder="Type a trait and press Enter or Tab..."
-                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                  value={currentTrait}
-                  onChange={(e) => setCurrentTrait(e.target.value)}
-                  onKeyDown={handleTraitKeyDown}
-                  maxLength={200}
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{currentTrait.length}/200</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-3">
-                {traits.map((trait) => (
-                  <button
-                    key={trait}
-                    type="button"
-                    onClick={() => removeTrait(trait)}
-                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
-                    title="Remove trait"
-                  >
-                    <span>{trait}</span>
-                    <span className="text-white/50">×</span>
-                  </button>
-                ))}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Navigation - Simple Text */}
+        <div className="w-48 flex-shrink-0 p-6">
+          <div className="sticky top-6">
+            <nav className="space-y-4">
+              {navigationSections.map((section) => (
                 <button
-                  type="button"
-                  onClick={handleTweakyClick}
-                  className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
+                  key={section.id}
+                  onClick={() => scrollToSection(section.id)}
+                  className={`block text-left text-sm transition-colors duration-200 ${
+                    activeSection === section.id
+                      ? 'text-white font-medium'
+                      : 'text-white/60 hover:text-white/80'
+                  }`}
                 >
-                  <span>tweaky +</span>
+                  {section.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="max-w-4xl mx-auto p-8 space-y-16">
+
+            {/* Account Section */}
+            <section id="account" className="space-y-6 scroll-mt-8">
+              <h2 className="text-3xl font-bold text-white">Account</h2>
+              <p className="text-white/70">Manage your account preferences and information.</p>
+              <div className="h-64 flex items-center justify-center text-white/50 frosted-glass rounded-xl">
+                Coming soon...
+              </div>
+            </section>
+
+            {/* Customization Section */}
+            <section id="customization" className="space-y-6 scroll-mt-8">
+              <h2 className="text-3xl font-bold text-white">Customize Chat</h2>
+              
+              {/* Name */}
+              <div>
+                <label htmlFor="name" className="block text-lg font-medium text-white/90 mb-3">
+                  What should Tweak3 Chat call you?
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="name"
+                    placeholder="Enter your name"
+                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={50}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{name.length}/50</span>
+                </div>
+              </div>
+
+              {/* Role */}
+              <div>
+                <label htmlFor="role" className="block text-lg font-medium text-white/90 mb-3">
+                  What do you do?
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="role"
+                    placeholder="Engineer, student, etc."
+                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    maxLength={50}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{role.length}/50</span>
+                </div>
+              </div>
+
+              {/* Traits */}
+              <div>
+                <label htmlFor="traits" className="block text-lg font-medium text-white/90 mb-3">
+                  What traits should Tweak3 Chat have?
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="traits"
+                    placeholder="Type a trait and press Enter or Tab..."
+                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                    value={currentTrait}
+                    onChange={(e) => setCurrentTrait(e.target.value)}
+                    onKeyDown={handleTraitKeyDown}
+                    maxLength={200}
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{currentTrait.length}/200</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {traits.map((trait) => (
+                    <button
+                      key={trait}
+                      type="button"
+                      onClick={() => removeTrait(trait)}
+                      className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
+                      title="Remove trait"
+                    >
+                      <span>{trait}</span>
+                      <span className="text-white/50">×</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleTweakyClick}
+                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
+                  >
+                    <span>tweaky +</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Instructions */}
+              <div>
+                <label htmlFor="custom-instructions" className="block text-lg font-medium text-white/90 mb-3">
+                  Anything else Tweak3 Chat should know about you?
+                </label>
+                <div className="relative">
+                  <textarea
+                    id="custom-instructions"
+                    rows={8}
+                    placeholder="Interests, values, or preferences to keep in mind"
+                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    maxLength={3000}
+                  ></textarea>
+                  <span className="absolute right-4 bottom-4 text-white/40 text-sm pointer-events-none">{customInstructions.length}/3000</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end items-center pt-4 gap-4">
+                {saveStatus && (
+                  <span
+                    className={`text-sm font-medium transition-opacity duration-500 ${
+                      saveStatus.type === 'success' ? 'text-gray-300' : 'text-gray-400'
+                    }`}
+                  >
+                    {saveStatus.message}
+                  </span>
+                )}
+                <button
+                  onClick={handleSave}
+                  className="frosted-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30"
+                >
+                  Save Preferences
                 </button>
               </div>
-            </div>
+            </section>
 
-            {/* Custom Instructions */}
-            <div>
-              <label htmlFor="custom-instructions" className="block text-lg font-medium text-white/90 mb-3">
-                Anything else Tweak3 Chat should know about you?
-              </label>
-              <div className="relative">
-                <textarea
-                  id="custom-instructions"
-                  rows={8}
-                  placeholder="Interests, values, or preferences to keep in mind"
-                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                  value={customInstructions}
-                  onChange={(e) => setCustomInstructions(e.target.value)}
-                  maxLength={3000}
-                ></textarea>
-                <span className="absolute right-4 bottom-4 text-white/40 text-sm pointer-events-none">{customInstructions.length}/3000</span>
+            {/* API Keys Section */}
+            <section id="api-keys" className="space-y-6 scroll-mt-8">
+              <h2 className="text-3xl font-bold text-white">API Keys</h2>
+              <p className="text-white/70">Configure your API keys for different providers.</p>
+              <div className="h-64 flex items-center justify-center text-white/50 frosted-glass rounded-xl">
+                Coming soon...
               </div>
-            </div>
-          </div>
+            </section>
 
-          <div className="flex justify-end items-center pt-4 gap-4">
-            {saveStatus && (
-              <span
-                className={`text-sm font-medium transition-opacity duration-500 ${
-                  saveStatus.type === 'success' ? 'text-gray-300' : 'text-gray-400'
-                }`}
-              >
-                {saveStatus.message}
-              </span>
-            )}
-            <button
-              onClick={handleSave}
-              className="frosted-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30"
-            >
-              Save Preferences
-            </button>
+            {/* Theme Section */}
+            <section id="theme" className="space-y-6 scroll-mt-8">
+              <h2 className="text-3xl font-bold text-white">Theme</h2>
+              <p className="text-white/70">Customize the appearance and visual style of your interface.</p>
+              <div className="h-64 flex items-center justify-center text-white/50 frosted-glass rounded-xl">
+                Coming soon...
+              </div>
+            </section>
+
+            {/* Site Settings Section */}
+            <section id="site-settings" className="space-y-6 scroll-mt-8">
+              <h2 className="text-3xl font-bold text-white">Site Settings</h2>
+              <p className="text-white/70">Adjust global site preferences and behavior.</p>
+              
+              {/* Resumable Stream Toggle */}
+              <div className="flex items-start justify-between">
+                <div className="flex-1 mr-6">
+                  <label htmlFor="disable-resumable-stream" className="block text-lg font-medium text-white/90 mb-2">
+                    Disable Resumable Stream
+                  </label>
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Turn this on to disable resumable streaming for faster response generation. 
+                    When enabled, responses will appear more quickly but cannot be resumed if interrupted.
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDisableResumableStream(!disableResumableStream)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-transparent ${
+                      disableResumableStream
+                        ? 'bg-blue-600 shadow-lg shadow-blue-500/25'
+                        : 'bg-white/20 backdrop-blur-sm border border-white/30'
+                    }`}
+                    id="disable-resumable-stream"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out shadow-lg ${
+                        disableResumableStream ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </section>
+
           </div>
         </div>
       </div>
