@@ -15,6 +15,8 @@ import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Branch, XSquare, Loader2, Pencil, Recycle, Paperclip, SendHorizonal} from "./components/Icons";
+import "./liquid-glass.css";
+import LiquidGlass from "./components/LiquidGlass";
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
 
@@ -462,6 +464,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const glassRef = useRef<HTMLDivElement | null>(null); // Add this line
   // Throttle scroll handler using rAF
   const scrollRafRef = useRef<number | null>(null);
   // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
@@ -1547,6 +1550,16 @@ Present code in Markdown code blocks with the correct language extension indicat
     processFiles(files);
   };
 
+  // Ensure glass effect is initialized on mount (for SSR/React hydration)
+useEffect(() => {
+  if (typeof window !== 'undefined' && window.liquidGlassManager) {
+    document.querySelectorAll('.liquid-glass').forEach(element => {
+      const options = JSON.parse(element.getAttribute('data-glass-options') || '{}');
+      window.liquidGlassManager.register(element, options);
+    });
+  }
+}, []);
+
   // --- RENDER ---
   if (isLoadingModels || !isUserLoaded) {
     return (
@@ -1659,11 +1672,14 @@ Present code in Markdown code blocks with the correct language extension indicat
             </button>
           </div>
         )}
+
+
         <div className="pt-8 pb-0 md:pb-6">
-          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
-            <div className="glass-effect backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col">
+          <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">          
+           
+            <LiquidGlass className="rounded-2xl p-4 shadow-2xl flex flex-col">
               {editingMessage && (
-                <div className="mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
+                <div className="liquid-glass-content mb-3 p-3 bg-blue-600/10 backdrop-filter backdrop-blur-md border border-blue-500/30 rounded-xl flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                     <span className="text-blue-300 text-sm font-medium">
@@ -1896,10 +1912,18 @@ Present code in Markdown code blocks with the correct language extension indicat
                   )}
                 </button>
               </div>
-            </div>
+            </LiquidGlass>
+            
           </form>
         </div>
       </div>
     </div>
   );
 };
+
+// Declare global types
+declare global {
+  interface Window {
+    liquidGlassManager?: any;
+  }
+}

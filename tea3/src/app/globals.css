@@ -10,6 +10,22 @@
   background: #374151;
   position: relative;
   overflow: hidden;
+  /* background-image: url('https://www.publicdomainpictures.net/pictures/610000/velka/seamless-floral-wallpaper-art-1715193626Gct.jpg'); */
+  background-image: url('https://static.vecteezy.com/system/resources/previews/056/652/082/non_2x/hand-drawn-white-flower-seamless-pattern-floral-repeating-wallpaper-for-textile-design-fabric-print-wrapping-paper-cute-daisy-flowers-on-blue-background-repeated-ditsy-texture-vector.jpg');
+  background-size: auto;
+  background-repeat: repeat;
+  background-position: center;
+  animation: moveBackground 60s linear infinite;
+
+}
+
+@keyframes moveBackground {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 0% -500%;
+  }
 }
 
 .chat-container::before {
@@ -23,14 +39,14 @@
   background: none;
   pointer-events: none;
 }
-
+/* 
 .glass-effect {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   will-change: transform;
   transform: translateZ(0);
-}
+} */
 
 .sidebar-glass {
   background: rgba(31, 41, 55, 0.8);
@@ -181,6 +197,9 @@
 .drag-overlay {
   animation: fadeIn 0.2s ease-in-out;
 }
+
+/*NEW GLASS EFFECT*/
+
 
 @keyframes fadeIn {
   from {
