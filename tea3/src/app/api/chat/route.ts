@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
   let redisKey: string | null = null;
   try {
-    const { messages, model, useWebSearch, useDeepResearch, assistantMessageId } =
+    const { messages, model, useWebSearch, assistantMessageId } =
       await req.json();
 
     console.log(
@@ -76,22 +76,19 @@ export async function POST(req: Request) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    let providerKey: string | undefined;
-    if (useDeepResearch) {
-      providerKey = "perplexity";
-    } else {
-      if (!model) {
-        return new Response(
-          JSON.stringify({ error: "Model selection is required" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      providerKey = MODEL_TO_PROVIDER[model];
-      if (!providerKey) {
-        return new Response(JSON.stringify({ error: "Invalid model" }), {
-          status: 400,
-        });
-      }
+    if (!model) {
+      return new Response(
+        JSON.stringify({ error: "Model selection is required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const providerKey: string | undefined = MODEL_TO_PROVIDER[model];
+
+    if (!providerKey) {
+      return new Response(JSON.stringify({ error: "Invalid model" }), {
+        status: 400,
+      });
     }
     const provider = PROVIDERS[providerKey];
     // Add other validations as needed...
