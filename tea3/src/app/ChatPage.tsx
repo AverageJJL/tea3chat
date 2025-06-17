@@ -830,6 +830,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (userPreferences?.disableResumableStream) return;
     const resumeStream = async (assistantMessageId: string) => {
       const timestamp = new Date().toLocaleTimeString();
       console.log(
@@ -916,7 +917,7 @@ export default function ChatPage() {
       resumeStream(inFlightId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userPreferences?.disableResumableStream]);
 
   // Simple title generation fallback
   async function generateTitleFromPrompt(
@@ -1289,10 +1290,12 @@ export default function ChatPage() {
       assistantMessageSupabaseId = assistantMessageData.supabase_id!;
       assistantLocalMessageId = await db.messages.add(assistantMessageData);
 
-      sessionStorage.setItem(
-        "inFlightAssistantMessageId",
-        assistantMessageSupabaseId
-      );
+      if (!userPreferences?.disableResumableStream) {
+        sessionStorage.setItem(
+          "inFlightAssistantMessageId",
+          assistantMessageSupabaseId
+        );
+      }
 
       // Clear inputs from UI
       setInput("");
@@ -1511,11 +1514,13 @@ export default function ChatPage() {
         });
       }
 
-      // Set the session storage key to allow resuming the regeneration on refresh.
-      sessionStorage.setItem(
-        "inFlightAssistantMessageId",
-        regenerationStreamId
-      );
+      if (!userPreferences?.disableResumableStream) {
+        // Set the session storage key to allow resuming the regeneration on refresh.
+        sessionStorage.setItem(
+          "inFlightAssistantMessageId",
+          regenerationStreamId
+        );
+      }
 
     try {
       // Main try for handleRegenerate API call and stream processing

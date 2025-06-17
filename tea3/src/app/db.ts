@@ -19,6 +19,7 @@ export interface UserPreferences {
   role?: string;
   traits?: string[];
   customInstructions?: string;
+  disableResumableStream?: boolean;
 }
 
 export interface MessageAttachment { 
@@ -97,6 +98,19 @@ export class AppDB extends Dexie {
       threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, pinned_at, title",
       messages: "++id, supabase_id, thread_supabase_id, createdAt",
       userPreferences: "++id, &userId",
+    });
+    this.version(10).stores({
+      threads: "++id, &supabase_id, userId, createdAt, updatedAt, forked_from_id, is_pinned, pinned_at, title",
+      messages: "++id, supabase_id, thread_supabase_id, createdAt",
+      userPreferences: "++id, &userId",
+    }).upgrade(tx => {
+      return tx.table("userPreferences")
+        .toCollection()
+        .modify(pref => {
+          if (pref.disableResumableStream === undefined) {
+            pref.disableResumableStream = false;
+          }
+        });
     });
     // If you had a version 1 without these fields, you might need an upgrade function
     // Example:

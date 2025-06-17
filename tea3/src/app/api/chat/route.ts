@@ -99,8 +99,16 @@ export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
   let redisKey: string | null = null;
   try {
-    const { messages, model, useWebSearch, assistantMessageId, userPreferences } =
-      await req.json();
+    const {
+      messages,
+      model,
+      useWebSearch,
+      assistantMessageId,
+      userPreferences,
+    } = await req.json();
+
+    const disableResumableStream =
+      userPreferences?.disableResumableStream === true;
 
     console.log(
       `[${timestamp}] [POST] Received request for model: ${model}, assistantMessageId: ${assistantMessageId}`
@@ -130,6 +138,74 @@ export async function POST(req: Request) {
     const provider = PROVIDERS[providerKey];
     // Add other validations as needed...
 
+    if (disableResumableStream) {
+      const modelDisplayName = provider.displayName;
+      const currentTimestamp = new Date().toLocaleString(undefined, {
+        timeZoneName: "short",
+      });
+
+      let systemPrompt = `You are Tweak 3 Chat, an AI assistant powered by the ${modelDisplayName} model. Your role is to assist and engage in conversation while being helpful, respectful, and engaging.
+
+If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
+The current date and time including timezone is ${currentTimestamp}.
+Always use LaTeX for mathematical expressions.
+
+For inline math, use a single dollar sign, like $...$. For example, $E = mc^2$.
+For display math, use double dollar signs, like $$...$$. For example, $$\\int_{a}^{b} f(x) dx$$.
+
+Present code in Markdown code blocks with the correct language extension indicated`;
+
+      if (userPreferences?.name && userPreferences.name.trim() !== '') {
+        systemPrompt += `\n\nYou're speaking with ${userPreferences.name}.`;
+      }
+
+      if (userPreferences?.role && userPreferences.role.trim() !== '') {
+        systemPrompt += `\n\nThe user's occupation is ${userPreferences.role}.`;
+      }
+
+      if (userPreferences?.traits && userPreferences.traits.length > 0) {
+        systemPrompt += `\n\nBehavioral traits to incorporate:\n${userPreferences.traits.join("\n")}`;
+      }
+
+      if (
+        userPreferences?.customInstructions &&
+        userPreferences.customInstructions.trim() !== ''
+      ) {
+        systemPrompt += `\n\nAdditional context:\n${userPreferences.customInstructions}`;
+      }
+
+      const systemMessage = { role: "system" as const, content: systemPrompt };
+      const messagesWithSystemPrompt = [systemMessage, ...messages];
+
+      const directStream = new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          try {
+            for await (const chunk of provider.stream({
+              model,
+              messages: messagesWithSystemPrompt,
+              useWebSearch,
+            })) {
+              controller.enqueue(
+                encoder.encode(`0:${JSON.stringify(chunk)}\n`)
+              );
+            }
+          } catch (err) {
+            console.error(`[${timestamp}] [DIRECT STREAM] Error:`, err);
+            controller.enqueue(
+              encoder.encode(`0:${JSON.stringify('Error: Generation failed.')}\n`)
+            );
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(directStream, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     if (!assistantMessageId) throw new Error("assistantMessageId is required.");
     redisKey = `stream:${assistantMessageId}`;
 
@@ -140,7 +216,7 @@ export async function POST(req: Request) {
 
     const initialState = { status: "streaming", content: "" };
     await redis.set(redisKey, JSON.stringify(initialState), { EX: 300 });
-    
+
     // --- DECOUPLING ---
     // Start the background processing but DO NOT await it.
     processAIAndCacheInBackground({
