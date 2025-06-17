@@ -112,20 +112,20 @@
   /* CORRECTED: Pushed the bright spots further into the actual corners */
   background: conic-gradient(
     from 0deg at 50% 50%,
-    rgba(255, 255, 255, 0.2) 0deg,
+    rgba(255, 255, 255, 0.15) 0deg,
     rgba(255, 255, 255, 0.1) 60deg,
-    rgba(255, 255, 255, 0.05) 90deg,
-    rgba(255, 255, 255, 0.3) 96deg,
-    rgba(255, 255, 255, 0.7) 101deg,
-    rgba(255, 255, 255, 0.4) 105deg,
-    rgba(255, 255, 255, 0.2) 150deg, /* Bottom-right corner - moved further right */
-    rgba(255, 255, 255, 0.1) 180deg,
-    rgba(255, 255, 255, 0.01) 210deg,
-    rgba(255, 255, 255, 0.01) 260deg,
-    rgba(255, 255, 255, 0.9) 274deg,
-    rgba(255, 255, 255, 0.6) 280deg,
-    rgba(255, 255, 255, 0.4) 290deg, /* Top-left corner - moved further left */
-    rgba(255, 255, 255, 0.2) 360deg
+    rgba(255, 255, 255, 0.1) 90deg,
+    rgba(255, 255, 255, 0.25) 96deg,
+    rgba(255, 255, 255, 0.65) 101deg,
+    rgba(255, 255, 255, 0.35) 105deg,
+    rgba(255, 255, 255, 0.15) 150deg, /* Bottom-right corner - moved further right */
+    rgba(255, 255, 255, 0.05) 180deg,
+    rgba(255, 255, 255, 0.05) 210deg,
+    rgba(255, 255, 255, 0.05) 260deg,
+    rgba(255, 255, 255, 0.85) 274deg,
+    rgba(255, 255, 255, 0.55) 280deg,
+    rgba(255, 255, 255, 0.35) 290deg, /* Top-left corner - moved further left */
+    rgba(255, 255, 255, 0.15) 360deg
   );
 
   /* Use mask to carve out the center, leaving only a thin line */
