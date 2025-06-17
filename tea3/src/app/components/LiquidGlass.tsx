@@ -39,8 +39,6 @@ const LiquidGlass: React.FC<LiquidGlassProps> & {
 
   Children.forEach(children, (child) => {
     if (isValidElement(child)) {
-      // --- FIX: Assert the type of 'child' after validation ---
-      // This tells TypeScript that 'child' is a ReactElement and has props.
       const element = child as ReactElement<{ children?: ReactNode }>;
 
       if (element.type === Background) {
@@ -74,6 +72,8 @@ const LiquidGlass: React.FC<LiquidGlassProps> & {
       <div className="liquid-glass-foreground-content">
         {foregroundContent}
       </div>
+      {/* This new div creates the shine effect */}
+      <div className="liquid-glass-shine" />
     </div>
   );
 };

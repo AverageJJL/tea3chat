@@ -27,13 +27,12 @@
   LAYER 2: The background content (text) that will be distorted.
 */
 .liquid-glass-background-content {
-    position: absolute;
-    z-index: 2;
+  position: absolute;
+  z-index: 2;
 }
 
 /*
   LAYER 3 (MIDDLE): The distortion layer.
-  It sits ON TOP of the background content, distorting it.
 */
 .liquid-glass::after {
   content: "";
@@ -67,15 +66,13 @@
 
 /*
   LAYER 4: The foreground content (UI) that is NOT distorted.
-  It sits ON TOP of the distortion layer.
 */
 .liquid-glass-foreground-content {
   inset: 0;
   z-index: 4;
-  /* This layer is interactive by default */
 }
 
-/* LAYER 5: The adaptive border glow (sits on top of everything) */
+/* LAYER 5: The adaptive border glow */
 .liquid-glass-border {
   position: absolute;
   inset: -1px;
@@ -100,6 +97,45 @@
   -webkit-mask-composite: xor;
 }
 
+/*
+  LAYER 6 (TOP): The sharp, static reflective shine.
+*/
+.liquid-glass-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0.8;
+  transition: opacity 0.4s ease-in-out, filter 0.4s ease-in-out;
+
+  /* CORRECTED: Pushed the bright spots further into the actual corners */
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(255, 255, 255, 0.2) 0deg,
+    rgba(255, 255, 255, 0.1) 60deg,
+    rgba(255, 255, 255, 0.05) 90deg,
+    rgba(255, 255, 255, 0.3) 96deg,
+    rgba(255, 255, 255, 0.7) 101deg,
+    rgba(255, 255, 255, 0.4) 105deg,
+    rgba(255, 255, 255, 0.2) 150deg, /* Bottom-right corner - moved further right */
+    rgba(255, 255, 255, 0.1) 180deg,
+    rgba(255, 255, 255, 0.01) 210deg,
+    rgba(255, 255, 255, 0.01) 260deg,
+    rgba(255, 255, 255, 0.9) 274deg,
+    rgba(255, 255, 255, 0.6) 280deg,
+    rgba(255, 255, 255, 0.4) 290deg, /* Top-left corner - moved further left */
+    rgba(255, 255, 255, 0.2) 360deg
+  );
+
+  /* Use mask to carve out the center, leaving only a thin line */
+  padding: 2px;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: xor;
+  -webkit-mask-composite: xor;
+}
+
+
 /* Hover effects */
 .liquid-glass:hover {
   transform: translateY(-8px) scale(1.02);
@@ -109,9 +145,14 @@
 }
 
 .liquid-glass:hover::before {
-  backdrop-filter: blur(7px) saturate(1.1);
+  backdrop-filter: blur(7px);
 }
 
 .liquid-glass:hover .liquid-glass-border {
   opacity: 1;
+}
+
+.liquid-glass:hover .liquid-glass-shine {
+  opacity: 1;
+  filter: brightness(1.3);
 }

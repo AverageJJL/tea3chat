@@ -74,13 +74,13 @@ export class AdvancedLiquidGlass {
         "filter"
       );
       filter.setAttribute("id", "border-glass-distortion");
-      // Using user-provided attributes
       filter.setAttribute("x", "-50%");
       filter.setAttribute("y", "-50%");
       filter.setAttribute("width", "200%");
       filter.setAttribute("height", "200%");
       filter.setAttribute("filterUnits", "objectBoundingBox");
 
+      // Step 1: Turbulence (same as before)
       const turbulence = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "feTurbulence"
@@ -91,69 +91,63 @@ export class AdvancedLiquidGlass {
       turbulence.setAttribute("result", "turbulence");
       turbulence.setAttribute("stitchTiles", "stitch");
 
-      const componentTransfer = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "feComponentTransfer"
-      );
-      componentTransfer.setAttribute("in", "turbulence");
-      componentTransfer.setAttribute("result", "mapped");
-
-      const funcR = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "feFuncR"
-      );
-      funcR.setAttribute("type", "gamma");
-      funcR.setAttribute("amplitude", "1");
-      funcR.setAttribute("exponent", "8");
-      funcR.setAttribute("offset", "0.5");
-
-      const funcG = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "feFuncG"
-      );
-      funcG.setAttribute("type", "gamma");
-      funcG.setAttribute("amplitude", "0.8");
-      funcG.setAttribute("exponent", "6");
-      funcG.setAttribute("offset", "0.3");
-
-      const funcB = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "feFuncB"
-      );
-      funcB.setAttribute("type", "gamma");
-      funcB.setAttribute("amplitude", "0");
-      funcB.setAttribute("exponent", "1");
-      funcB.setAttribute("offset", "0.5");
-
-      componentTransfer.appendChild(funcR);
-      componentTransfer.appendChild(funcG);
-      componentTransfer.appendChild(funcB);
-
-      const gaussianBlur = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "feGaussianBlur"
-      );
-      gaussianBlur.setAttribute("in", "mapped");
-      gaussianBlur.setAttribute("stdDeviation", "0"); // chanfged to 0 to avoid noise
-      gaussianBlur.setAttribute("result", "softMap");
-
+      // Step 2: Displacement Map (same as before, but give it a result)
       const displacement = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "feDisplacementMap"
       );
       displacement.setAttribute("in", "SourceGraphic");
-      displacement.setAttribute("in2", "softMap");
+      displacement.setAttribute("in2", "turbulence");
       displacement.setAttribute(
         "scale",
         this.options.distortionStrength.toString()
       );
       displacement.setAttribute("xChannelSelector", "R");
       displacement.setAttribute("yChannelSelector", "G");
+      displacement.setAttribute("result", "displaced"); // Give the result a name
 
+      // --- NEW: Specular Lighting ---
+      // This creates the shiny reflection effect.
+      const specularLighting = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "feSpecularLighting"
+      );
+      specularLighting.setAttribute("in", "turbulence"); // Use the turbulence as a bump map
+      specularLighting.setAttribute("surfaceScale", "15"); // How "bumpy" the surface is
+      specularLighting.setAttribute("specularConstant", "1.2"); // How reflective
+      specularLighting.setAttribute("specularExponent", "30"); // How sharp/glossy the highlight is
+      specularLighting.setAttribute("lighting-color", "#ffffff"); // Color of the light
+      specularLighting.setAttribute("result", "specular");
+
+      // --- NEW: Light Source ---
+      // Defines the light that hits the surface.
+      const distantLight = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "feDistantLight"
+      );
+      distantLight.setAttribute("azimuth", "235"); // Direction of the light (from bottom-right)
+      distantLight.setAttribute("elevation", "60"); // Angle of the light from the surface
+      specularLighting.appendChild(distantLight);
+
+      // --- NEW: Composite Lighting and Distortion ---
+      // This combines the original displaced image with the new shiny highlight.
+      const composite = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "feComposite"
+      );
+      composite.setAttribute("in", "displaced"); // The original distorted image
+      composite.setAttribute("in2", "specular"); // The new highlight layer
+      composite.setAttribute("operator", "arithmetic"); // Use 'arithmetic' to add the layers
+      composite.setAttribute("k1", "0");
+      composite.setAttribute("k2", "1"); // Keep 100% of the original image
+      composite.setAttribute("k3", "0.005"); // Add 100% of the highlight on top
+      composite.setAttribute("k4", "0");
+
+      // Append all filters in order
       filter.appendChild(turbulence);
-      filter.appendChild(componentTransfer);
-      filter.appendChild(gaussianBlur);
       filter.appendChild(displacement);
+      filter.appendChild(specularLighting);
+      filter.appendChild(composite); // The composite is the final step
       defs.appendChild(filter);
 
       this.turbulenceElement = turbulence;
