@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef} from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, Thread, Message, MessageAttachment } from "./db"; // Ensure MessageAttachment is exported from db.ts
+import { db, Thread, Message, MessageAttachment, UserPreferences } from "./db"; // Ensure UserPreferences is imported
 import { uploadFileToSupabaseStorage } from "./supabaseStorage";
 import { v4 as uuidv4 } from "uuid"; // Added for generating unique IDs
 import ReactMarkdown from "react-markdown";
@@ -510,6 +510,14 @@ export default function ChatPage() {
     modelsError,
   } = useOutletContext<ChatPageContext>();
   
+  const userPreferences = useLiveQuery(
+    () => {
+      if (!user) return undefined;
+      return db.userPreferences.where({ userId: user.id }).first();
+    },
+    [user?.id]
+  );
+
   const [error, setError] = useState<string | null>(null);
   const [isErrorFading, setIsErrorFading] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -538,6 +546,17 @@ export default function ChatPage() {
   const baseTextareaHeightRef = useRef<number>(0);
 
   const isSubmittingRef = useRef(false);
+  // Ref to manage aborting ongoing fetch/stream requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Handler to stop the current generation stream
+  const handleStopGeneration = React.useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    // Optimistically reset UI state; final cleanup happens in catch/finally blocks
+    setIsSending(false);
+  }, []);
 
   const handleWebSearchToggle = () => {
     setUseWebSearch(!useWebSearch);
@@ -822,30 +841,8 @@ export default function ChatPage() {
       return { role: m.role, content: m.content };
     });
 
-    // 2) Construct the system prompt that should precede the conversation.
-    const modelDisplayName =
-      availableModels.find((am) => am.value === selectedModel)?.displayName ||
-      selectedModel;
-    const currentTimestamp = new Date().toLocaleString(undefined, {
-      timeZoneName: "short",
-    });
-
-    const systemPrompt = `You are Tweak 3 Chat, an AI assistant powered by the ${modelDisplayName} model. Your role is to assist and engage in conversation while being helpful, respectful, and engaging.
-
-If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
-The current date and time including timezone is ${currentTimestamp}.
-Always use LaTeX for mathematical expressions.
-
-For inline math, use a single dollar sign, like $...$. For example, $E = mc^2$.
-For display math, use double dollar signs, like $$...$$. For example, $$\int_{a}^{b} f(x) dx$$.
-
-Ensure code is properly formatted using Prettier with a print width of 80 characters
-Present code in Markdown code blocks with the correct language extension indicated`;
-
-    const systemMessage = { role: "system" as const, content: systemPrompt };
-
-    // 3) Prepend the system message to the rest of the history.
-    return [systemMessage, ...transformedHistory];
+    // The system prompt is now handled by the backend in api/chat/route.ts
+    return transformedHistory;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -968,7 +965,9 @@ Present code in Markdown code blocks with the correct language extension indicat
           setAttachedPreviews([]);
           if (fileInputRef.current) fileInputRef.current.value = "";
 
-          // Call the AI API to regenerate the response.
+          // Create AbortController for this request
+          const editController = new AbortController();
+          abortControllerRef.current = editController;
           const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -977,7 +976,9 @@ Present code in Markdown code blocks with the correct language extension indicat
               messages: historyForAI,
               useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
               assistantMessageId: assistantMessageToUpdate.supabase_id,
+              userPreferences: userPreferences,
             }),
+            signal: editController.signal,
           });
 
           if (!response.body || !response.ok) {
@@ -1008,10 +1009,15 @@ Present code in Markdown code blocks with the correct language extension indicat
           }
         }
       } catch (err: any) {
-        console.error("Failed to update message:", err);
-        setError(err.message || "Failed to update message.");
+        if (err.name === "AbortError") {
+          console.log("Generation aborted by user (edit flow).");
+        } else {
+          console.error("Failed to update message:", err);
+          setError(err.message || "Failed to update message.");
+        }
       } finally {
         setIsSending(false);
+        abortControllerRef.current = null;
         // Always sync the thread after an edit operation completes or fails.
         if (editingMessage?.thread_supabase_id) {
        
@@ -1175,11 +1181,10 @@ Present code in Markdown code blocks with the correct language extension indicat
         .sortBy("createdAt");
       const historyForAI = buildHistoryForAI(fullHistory, modelSupportsImages);
 
-      // Call AI API
-      const submitTimestamp = new Date().toLocaleTimeString();
-      console.log(
-        `[${submitTimestamp}] [FE] Sending request to /api/chat with ID: ${assistantMessageSupabaseId}`
-      );
+      // Create AbortController for this streaming request
+      const submitController = new AbortController();
+      abortControllerRef.current = submitController;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1188,7 +1193,9 @@ Present code in Markdown code blocks with the correct language extension indicat
           messages: historyForAI,
           useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
           assistantMessageId: assistantMessageSupabaseId,
+          userPreferences: userPreferences,
         }),
+        signal: submitController.signal,
       });
 
       if (!response.body || !response.ok) {
@@ -1221,17 +1228,22 @@ Present code in Markdown code blocks with the correct language extension indicat
         `[${new Date().toLocaleTimeString()}] [FE] Stream finished normally for ID: ${assistantMessageSupabaseId}`
       );
     } catch (err: any) {
-      console.error("Submit error:", err);
-      setError(err.message || "Failed to get response.");
-      // If an error occurs, update the placeholder message to show it.
-      if (assistantLocalMessageId) {
-        await db.messages.update(assistantLocalMessageId, {
-          content: `Error: ${err.message}`,
-        });
+      if (err.name === "AbortError") {
+        console.log("Generation aborted by user (new message flow).");
+      } else {
+        console.error("Submit error:", err);
+        setError(err.message || "Failed to get response.");
+        // If an error occurs, update the placeholder message to show it.
+        if (assistantLocalMessageId) {
+          await db.messages.update(assistantLocalMessageId, {
+            content: `Error: ${err.message}`,
+          });
+        }
       }
       sessionStorage.removeItem("inFlightAssistantMessageId");
     } finally {
       setIsSending(false);
+      abortControllerRef.current = null;
       sessionStorage.removeItem("inFlightAssistantMessageId");
       isSubmittingRef.current = false;
       
@@ -1372,6 +1384,8 @@ Present code in Markdown code blocks with the correct language extension indicat
 
     try {
       // Main try for handleRegenerate API call and stream processing
+      const regenController = new AbortController();
+      abortControllerRef.current = regenController;
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1381,7 +1395,9 @@ Present code in Markdown code blocks with the correct language extension indicat
           useWebSearch:
             useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
           assistantMessageId: regenerationStreamId,
-          }),
+          userPreferences: userPreferences,
+        }),
+        signal: regenController.signal,
       });
       if (!response.ok || !response.body) throw new Error("API error");
       const reader = response.body.getReader();
@@ -1406,27 +1422,28 @@ Present code in Markdown code blocks with the correct language extension indicat
       } // Closes while loop for stream reading
       // Correct placement of the catch and finally for the main try block of handleRegenerate
     } catch (err: any) {
-      console.error("Regenerate error:", err);
-      if (msg.id) {
-        await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+      if (err.name === "AbortError") {
+        console.log("Generation aborted by user (regenerate flow).");
+      } else {
+        console.error("Regenerate error:", err);
+        if (msg.id) {
+          await db.messages.update(msg.id, { content: `Error: ${err.message}` });
+        }
       }
     } finally {
       setIsSending(false);
+      abortControllerRef.current = null;
       sessionStorage.removeItem("inFlightAssistantMessageId");
+
       // Sync only the regenerated message to Supabase
       if (msg.thread_supabase_id && msg.id) {
         try {
-          // Get the updated message from the database
           const updatedMessage = await db.messages.get(msg.id);
-          // if (updatedMessage) {
-          //   await syncMessagesToBackend([updatedMessage]);
-          // }
-          
           const messagesToUpsert = updatedMessage ? [updatedMessage] : [];
           await syncEditOperationToBackend({
             threadSupabaseId: msg.thread_supabase_id,
             messagesToUpsert,
-            idsToDelete: idsToDelete, // Pass the list of IDs to delete
+            idsToDelete: idsToDelete,
           });
         } catch (syncError) {
           console.error(
@@ -1920,17 +1937,18 @@ useEffect(() => {
                 </div>
 
                 <button
-                  type="submit"
-                  disabled={
-                    isSending || (!input.trim() && attachedFiles.length === 0)
-                  }
-                  className="w-10 h-10 flex items-center justify-center bg-white hover:bg-gray-200 disabled:bg-gray-500 text-black rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-                  title={editingMessage ? "Update message" : "Send message"}
+                  type={isSending ? "button" : "submit"}
+                  onClick={isSending ? handleStopGeneration : undefined}
+                  disabled={!isSending && (!input.trim() && attachedFiles.length === 0)}
+                  className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors focus:outline-none shadow-lg hover:shadow-xl ${
+                    isSending
+                      ? "frosted-button-sidebar text-white"
+                      : "bg-white hover:bg-gray-200 text-black disabled:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  }`}
+                  title={isSending ? "Stop generating" : editingMessage ? "Update message" : "Send message"}
                 >
                   {isSending ? (
-                    <div className="animate-spin">
-                      <Loader2 />
-                    </div>
+                    <XSquare />
                   ) : editingMessage ? (
                     <span className="text-sm font-medium">Update</span>
                   ) : (

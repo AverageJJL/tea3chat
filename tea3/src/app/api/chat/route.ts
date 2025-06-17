@@ -16,6 +16,7 @@ async function processAIAndCacheInBackground({
   useWebSearch,
   redisKey,
   timestamp,
+  userPreferences,
 }: {
   provider: ModelProvider;
   model: string;
@@ -23,6 +24,7 @@ async function processAIAndCacheInBackground({
   useWebSearch: boolean;
   redisKey: string;
   timestamp: string;
+  userPreferences?: { name?: string; role?: string; traits?: string[]; customInstructions?: string };
 }) {
   let redis: Awaited<ReturnType<typeof getRedisClient>>;
   let finalContent = "";
@@ -34,7 +36,42 @@ async function processAIAndCacheInBackground({
 
     redis = await getRedisClient();
 
-    for await (const chunk of provider.stream({ model, messages, useWebSearch })) {
+    const modelDisplayName = provider.displayName;
+    const currentTimestamp = new Date().toLocaleString(undefined, {
+      timeZoneName: "short",
+    });
+
+    let systemPrompt = `You are Tweak 3 Chat, an AI assistant powered by the ${modelDisplayName} model. Your role is to assist and engage in conversation while being helpful, respectful, and engaging.
+
+If you are specifically asked about the model you are using, you may mention that you use the ${modelDisplayName} model. If you are not asked specifically about the model you are using, you do not need to mention it.
+The current date and time including timezone is ${currentTimestamp}.
+Always use LaTeX for mathematical expressions.
+
+For inline math, use a single dollar sign, like $...$. For example, $E = mc^2$.
+For display math, use double dollar signs, like $$...$$. For example, $$\int_{a}^{b} f(x) dx$$.
+
+Present code in Markdown code blocks with the correct language extension indicated`;
+    
+    if (userPreferences?.name && userPreferences.name.trim() !== '') {
+      systemPrompt += `\n\nYou're speaking with ${userPreferences.name}.`;
+    }
+
+    if (userPreferences?.role && userPreferences.role.trim() !== '') {
+       systemPrompt += `\n\nThe user's occupation is ${userPreferences.role}.`;
+    }
+
+    if (userPreferences?.traits && userPreferences.traits.length > 0) {
+       systemPrompt += `\n\nBehavioral traits to incorporate:\n${userPreferences.traits.join("\n")}`;
+    }
+
+    if (userPreferences?.customInstructions && userPreferences.customInstructions.trim() !== '') {
+       systemPrompt += `\n\nAdditional context:\n${userPreferences.customInstructions}`;
+    }
+
+    const systemMessage = { role: "system" as const, content: systemPrompt };
+    const messagesWithSystemPrompt = [systemMessage, ...messages];
+
+    for await (const chunk of provider.stream({ model, messages: messagesWithSystemPrompt, useWebSearch })) {
       finalContent += chunk;
       const state = { status: "streaming", content: finalContent };
       await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
@@ -62,7 +99,7 @@ export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
   let redisKey: string | null = null;
   try {
-    const { messages, model, useWebSearch, assistantMessageId } =
+    const { messages, model, useWebSearch, assistantMessageId, userPreferences } =
       await req.json();
 
     console.log(
@@ -113,6 +150,7 @@ export async function POST(req: Request) {
       useWebSearch,
       redisKey,
       timestamp,
+      userPreferences,
     });
 
     // --- CLIENT-FACING STREAM ---
