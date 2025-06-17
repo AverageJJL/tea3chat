@@ -315,6 +315,72 @@ const MessageRow = React.memo(
     // Determine role
     const isAssistant = message.role === "assistant";
 
+    // Create a custom code component to handle syntax highlighting
+    const CodeBlock = React.useCallback(({ inline, className, children, ...rest }: any) => {
+      const [codeIsCopied, setCodeIsCopied] = React.useState(false);
+      const match = /language-(\w+)/.exec(className || "");
+      
+      const handleCodeCopy = React.useCallback(async () => {
+        try {
+          await navigator.clipboard.writeText(String(children));
+          setCodeIsCopied(true);
+          setTimeout(() => setCodeIsCopied(false), 2000);
+        } catch (err) {
+          console.error("Failed to copy code:", err);
+        }
+      }, [children]);
+      
+      return !inline && match ? (
+        <div className="code-block-container group">
+          <div className="code-block-header">
+            <span className="code-block-language">
+              {match[1]}
+            </span>
+            <button
+              onClick={handleCodeCopy}
+              className="code-block-copy-btn"
+              title={codeIsCopied ? "Copied!" : "Copy code"}
+            >
+              {codeIsCopied ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="code-block-content">
+            <SyntaxHighlighter
+              style={vscDarkPlus as any}
+              language={match[1]}
+              PreTag="div"
+              showLineNumbers={false}
+              wrapLines={false}
+              customStyle={{
+                margin: 0,
+                padding: '20px 24px',
+                background: 'transparent',
+                fontSize: '15px',
+                lineHeight: '1.8',
+                letterSpacing: '0.025em',
+              }}
+              {...(rest as any)}
+            >
+              {String(children).replace(/\n$/, "")}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      ) : (
+        <code className={className} {...(rest as any)}>
+          {children}
+        </code>
+      );
+    }, []);
+
     // Memoise heavy Markdown render
     const markdownBody = React.useMemo(() => {
       if (!isAssistant) return null;
@@ -322,11 +388,14 @@ const MessageRow = React.memo(
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
+          components={{
+            code: CodeBlock,
+          }}
         >
           {message.content}
         </ReactMarkdown>
       );
-    }, [isAssistant, message.content]);
+    }, [isAssistant, message.content, CodeBlock]);
 
     const [isCopied, setIsCopied] = React.useState(false);
 
@@ -337,7 +406,7 @@ const MessageRow = React.memo(
         } mb-12`}
       >
         {isAssistant ? (
-          <div className="max-w-4xl relative pb-8">
+          <div className="max-w-4xl w-full relative pb-8">
             {/* Header: model name + timestamp */}
             <div className="flex items-center mb-3">
               <div className="flex items-center space-x-2">
@@ -388,7 +457,7 @@ const MessageRow = React.memo(
           </div>
         ) : (
           <div className="max-w-4xl relative pb-8">
-            <div className="glass-effect rounded-2xl px-6 py-4 shadow-lg">
+            <div className="frosted-glass rounded-2xl px-6 py-4 shadow-lg">
               <div className="text-white/90 leading-relaxed text-lg">
                 <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
               </div>
@@ -456,8 +525,6 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
-  // Add deep research state
-  const [useDeepResearch, setUseDeepResearch] = useState<boolean>(false);
   // Add state for textarea expansion
   const [isTextareaExpanded, setIsTextareaExpanded] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -473,19 +540,7 @@ export default function ChatPage() {
   const isSubmittingRef = useRef(false);
 
   const handleWebSearchToggle = () => {
-    const isEnabling = !useWebSearch;
-    setUseWebSearch(isEnabling);
-    if (isEnabling) {
-      setUseDeepResearch(false);
-    }
-  };
-
-  const handleDeepResearchToggle = () => {
-    const isEnabling = !useDeepResearch;
-    setUseDeepResearch(isEnabling);
-    if (isEnabling) {
-      setUseWebSearch(false);
-    }
+    setUseWebSearch(!useWebSearch);
   };
 
   // Auto-clear error after 3 seconds
@@ -804,7 +859,7 @@ Present code in Markdown code blocks with the correct language extension indicat
       return;
     }
 
-    const modelForResponse = useDeepResearch ? "Sonar Deep Research" : selectedModel;
+    const modelForResponse = selectedModel;
 
     const modelSupportsImages =
       selectedModel === "meta-llama/llama-4-maverick:free" ||
@@ -921,7 +976,6 @@ Present code in Markdown code blocks with the correct language extension indicat
               model: modelForResponse,
               messages: historyForAI,
               useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
-              useDeepResearch,
               assistantMessageId: assistantMessageToUpdate.supabase_id,
             }),
           });
@@ -1133,7 +1187,6 @@ Present code in Markdown code blocks with the correct language extension indicat
           model: modelForResponse,
           messages: historyForAI,
           useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
-          useDeepResearch,
           assistantMessageId: assistantMessageSupabaseId,
         }),
       });
@@ -1241,6 +1294,19 @@ Present code in Markdown code blocks with the correct language extension indicat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseThreadId]);
 
+  // Always scroll to the bottom when switching to a new chat thread
+  React.useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    // Defer the scroll until after the next paint to ensure DOM is ready
+    const rafId = requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [supabaseThreadId]);
+
   const removeAttachedFile = (indexToRemove: number) => {
     setAttachedFiles((files) =>
       files.filter((_, index) => index !== indexToRemove)
@@ -1289,7 +1355,7 @@ Present code in Markdown code blocks with the correct language extension indicat
 
     setIsSending(true);
 
-    const modelForRegeneration = useDeepResearch ? 'Sonar Deep Research' : (msg.model || selectedModel);
+    const modelForRegeneration = (msg.model || selectedModel);
     // Ensure msg.id is valid before updating
     if (msg.id) {
       await db.messages.update(msg.id, { content: "", model: modelForRegeneration });
@@ -1314,7 +1380,6 @@ Present code in Markdown code blocks with the correct language extension indicat
           messages: historyForAI,
           useWebSearch:
             useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
-          useDeepResearch,
           assistantMessageId: regenerationStreamId,
           }),
       });
@@ -1564,7 +1629,7 @@ useEffect(() => {
   if (isLoadingModels || !isUserLoaded) {
     return (
       <div className="chat-container h-screen w-screen flex items-center justify-center">
-        <div className="glass-effect rounded-2xl p-8 text-white text-lg font-medium">
+        <div className="frosted-glass rounded-2xl p-8 text-white text-lg font-medium">
           Loading...
         </div>
       </div>
@@ -1573,7 +1638,7 @@ useEffect(() => {
 
   return (
     <div className="chat-container flex-grow flex flex-col">
-      <div className="header-glass p-6 flex justify-between items-center relative z-10 shrink-0">
+      <div className="frosted-header p-6 flex justify-between items-center relative z-10 shrink-0">
         <div className="flex items-center space-x-6">
           <h1 className="text-2xl font-bold text-white">Tweak3 Chat</h1>
           {/* Removed Model Selector and Web Search Toggle - moved to chatbar */}
@@ -1653,7 +1718,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="glass-effect backdrop-blur-xl px-4 py-2 rounded-xl text-white/80 hover:text-white text-sm font-medium transition-colors shadow-lg flex items-center space-x-2"
+              className="frosted-glass backdrop-blur-xl px-4 py-2 rounded-xl text-white/80 hover:text-white text-sm font-medium transition-colors shadow-lg flex items-center space-x-2"
               title="Scroll to bottom"
             >
               <span>Scroll to bottom</span>
@@ -1718,7 +1783,7 @@ useEffect(() => {
               />
 
               {attachedFiles.length > 0 && (
-                <div className="mb-3 p-3 glass-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div className="mb-3 p-3 frosted-button-sidebar rounded-xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {attachedFiles.map((file, index) => (
                     <div key={index} className="relative group">
                       {attachedPreviews[index] ? (
@@ -1728,7 +1793,7 @@ useEffect(() => {
                           className="w-full h-24 object-cover rounded-lg"
                         />
                       ) : (
-                        <div className="w-full h-24 glass-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
+                        <div className="w-full h-24 frosted-button-sidebar rounded-lg flex flex-col items-center justify-center p-2">
                           <span className="text-gray-300 text-xs font-medium text-center truncate w-full">
                             {file.name}
                           </span>
@@ -1780,7 +1845,7 @@ useEffect(() => {
                           - Default (mobile): tighter padding, smaller text, truncate long labels.
                           - md and up: original spacing / font.
                         */
-                        className="glass-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
+                        className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
                         disabled={
                           isLoadingModels || availableModels.length === 0
                         }
@@ -1823,7 +1888,7 @@ useEffect(() => {
                             className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
                               useWebSearch
                                 ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                                : "glass-button-sidebar text-white/70 hover:text-white"
+                                : "frosted-button-sidebar text-white/70 hover:text-white"
                             }`}
                             title={
                               useWebSearch
@@ -1851,46 +1916,6 @@ useEffect(() => {
                         </div>
                       </div>
                     )}
-
-                    {/* Deep Research Toggle */}
-                    <div className="flex items-center space-x-3">
-                      <div className="group relative">
-                        <button
-                          type="button"
-                          onClick={handleDeepResearchToggle}
-                          className={`p-2 rounded-lg transition-all duration-200 flex items-center justify-center ${
-                            useDeepResearch
-                              ? "bg-purple-600/20 text-purple-400 border border-purple-500/30"
-                              : "glass-button-sidebar text-white/70 hover:text-white"
-                          }`}
-                          title={
-                            useDeepResearch
-                              ? "Disable deep research"
-                              : "Enable deep research"
-                          }
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="11" cy="11" r="8" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                            <line x1="11" y1="8" x2="11" y2="14" />
-                            <line x1="8" y1="11" x2="14" y2="11" />
-                          </svg>
-                        </button>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                          {useDeepResearch
-                            ? "Disable deep research"
-                            : "Enable Perplexity Sonar deep research"}
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
 

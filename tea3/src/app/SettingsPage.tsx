@@ -36,7 +36,7 @@ export default function SettingsPage() {
   if (!isLoaded) {
     return (
       <div className="chat-container h-screen w-screen flex items-center justify-center">
-        <div className="glass-effect rounded-2xl p-8 text-white text-lg font-medium">
+        <div className="frosted-glass rounded-2xl p-8 text-white text-lg font-medium">
           Loading...
         </div>
       </div>
@@ -45,7 +45,7 @@ export default function SettingsPage() {
 
   return (
     <div className="chat-container flex-grow flex flex-col">
-      <div className="header-glass p-6 flex justify-between items-center relative z-10 shrink-0">
+      <div className="frosted-header p-6 flex justify-between items-center relative z-10 shrink-0">
         <div className="flex items-center space-x-6">
           <h1 className="text-2xl font-bold text-white">Settings</h1>
         </div>
@@ -71,7 +71,7 @@ export default function SettingsPage() {
                   type="text"
                   id="name"
                   placeholder="Enter your name"
-                  className="input-glass w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">0/50</span>
               </div>
@@ -87,7 +87,7 @@ export default function SettingsPage() {
                   type="text"
                   id="role"
                   placeholder="Engineer, student, etc."
-                  className="input-glass w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">0/100</span>
               </div>
@@ -104,13 +104,13 @@ export default function SettingsPage() {
                   type="text"
                   id="traits"
                   placeholder="Type a trait and press Enter or Tab..."
-                  className="input-glass w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">0/50</span>
               </div>
               <div className="mt-3 flex flex-wrap gap-3">
                 {['tweaky'].map(trait => (
-                  <button key={trait} className="glass-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all">
+                  <button key={trait} className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all">
                     <span>{trait}</span>
                     <span className="text-white/50">+</span>
                   </button>
@@ -128,7 +128,7 @@ export default function SettingsPage() {
                   id="custom-instructions"
                   rows={8}
                   placeholder="Interests, values, or preferences to keep in mind"
-                  className="input-glass w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 ></textarea>
                 <span className="absolute right-4 bottom-4 text-white/40 text-sm pointer-events-none">0/3000</span>
               </div>
@@ -137,7 +137,7 @@ export default function SettingsPage() {
 
           <div className="flex justify-end pt-4">
             <button
-              className="glass-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30"
+              className="frosted-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30"
             >
               Save Preferences
             </button>

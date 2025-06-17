@@ -8,7 +8,7 @@ const client = createOpenAI({
 });
 
 const openrouterProvider: ModelProvider = {
-  displayName: 'OpenRouter',
+  displayName: 'Deepseek V3',
   supportsImages: false,
   async *stream({ model, messages }) {
     const result = await streamText({ model: client(model), messages });

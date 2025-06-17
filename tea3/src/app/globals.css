@@ -39,16 +39,16 @@
   background: none;
   pointer-events: none;
 }
-/* 
-.glass-effect {
+/* Former .glass-effect renamed to .frosted-glass */
+.frosted-glass {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   will-change: transform;
   transform: translateZ(0);
-} */
+}
 
-.sidebar-glass {
+.frosted-sidebar {
   background: rgba(31, 41, 55, 0.8);
   backdrop-filter: blur(12px);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -56,25 +56,25 @@
   transform: translateZ(0);
 }
 
-.glass-button-sidebar {
+/* Shared frosted appearance for sidebar buttons and in-chat messages */
+.frosted-button-sidebar,
+.frosted-message {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.frosted-button-sidebar {
+  /* previously duplicated visual properties have been moved to the shared rule above */
   transition: all 0.3s ease;
 }
 
-.glass-button-sidebar:hover {
+.frosted-button-sidebar:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.message-glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.input-glass {
+.frosted-input {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -92,7 +92,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.header-glass {
+.frosted-header {
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(15px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -137,41 +137,41 @@
 }
 
 /* Button hover effects */
-.glass-button {
+.frosted-button {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
 }
 
-.glass-button:hover {
+.frosted-button:hover {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
 }
 
 /* Glass select styling for chat controls */
-.glass-button-sidebar select {
+.frosted-button-sidebar select {
   background: transparent;
   border: none;
   outline: none;
   color: inherit;
 }
 
-.glass-button-sidebar select option {
+.frosted-button-sidebar select option {
   background: rgba(31, 41, 55, 0.95);
   color: white;
   padding: 8px 12px;
 }
 
-.glass-button-sidebar:focus-within {
+.frosted-button-sidebar:focus-within {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(59, 130, 246, 0.5);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 /* Input focus effects */
-.glass-input:focus {
+.frosted-input:focus {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.4);
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);

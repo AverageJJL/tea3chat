@@ -54,7 +54,7 @@ async function handleFileUploadForGemini(url: string, mimeType: string, displayN
 }
 
 const geminiProvider: ModelProvider = {
-  displayName: 'Gemini',
+  displayName: 'Gemini 2.5 Flash',
   supportsImages: true,
   async *stream({ model, messages, useWebSearch }) {
     const geminiMessages = await Promise.all(

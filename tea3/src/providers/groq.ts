@@ -8,7 +8,7 @@ const client = createOpenAI({
 });
 
 const groqProvider: ModelProvider = {
-  displayName: 'Groq',
+  displayName: 'llama 3 8B',
   supportsImages: false,
   async *stream({ model, messages }) {
     const result = await streamText({ model: client(model), messages });
