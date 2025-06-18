@@ -69,14 +69,13 @@ export default function LandingPage() {
       <section id="features" className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-white">
-            Features of Tweak3
+            Features
           </h2>
           
           {/* Core Requirements */}
           <div className="mb-16">
             <h3 className="text-2xl font-semibold mb-8 text-gray-300">Core Requirements</h3>
-            <p className="text-gray-400 mb-8">The minimum to qualify for a prize</p>
-            
+       
             <div className="grid md:grid-cols-2 gap-8">
               <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
                 <div className="flex items-start space-x-4">
@@ -87,7 +86,7 @@ export default function LandingPage() {
                       Implement support for multiple language models and providers
                     </p>
                     <span className="inline-flex items-center text-green-400 text-sm">
-                      ✓ Required
+                      ✓ 
                     </span>
                   </div>
                 </div>
@@ -102,49 +101,19 @@ export default function LandingPage() {
                       User authentication with chat history synchronization
                     </p>
                     <span className="inline-flex items-center text-green-400 text-sm">
-                      ✓ Required
+                      ✓ 
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-start space-x-4">
-                  <div className="text-2xl">🌐</div>
-                  <div>
-                    <h4 className="text-xl font-semibold mb-2 text-white">Browser Friendly</h4>
-                    <p className="text-gray-300 mb-3">
-                      As much as we'd like to, we can't realistically get everyone's native apps set up
-                    </p>
-                    <span className="inline-flex items-center text-green-400 text-sm">
-                      ✓ Required
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-start space-x-4">
-                  <div className="text-2xl">⚡</div>
-                  <div>
-                    <h4 className="text-xl font-semibold mb-2 text-white">Easy to Try</h4>
-                    <p className="text-gray-300 mb-3">
-                      We need an easy way to try out what you've built!
-                    </p>
-                    <span className="inline-flex items-center text-green-400 text-sm">
-                      ✓ Required
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
           {/* Bonus Features */}
           <div>
             <h3 className="text-2xl font-semibold mb-8 text-gray-300">Bonus Features</h3>
-            <p className="text-gray-400 mb-8">Ideas to go above and beyond</p>
-            
+
             <div className="grid md:grid-cols-2 gap-8">
               <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
                 <div className="flex items-start space-x-4">
@@ -164,7 +133,7 @@ export default function LandingPage() {
                   <div>
                     <h4 className="text-xl font-semibold mb-2 text-white">Image Generation Support</h4>
                     <p className="text-gray-300">
-                      AI-powered image generation capabilities
+                      Implemented but we do not have a key that can do image generation #broke
                     </p>
                   </div>
                 </div>
@@ -246,9 +215,9 @@ export default function LandingPage() {
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">📱</div>
                   <div>
-                    <h4 className="text-xl font-semibold mb-2 text-white">Mobile App</h4>
+                    <h4 className="text-xl font-semibold mb-2 text-white">Mobile Friendly</h4>
                     <p className="text-gray-300">
-                      Why not ship mobile and web?
+                      You can visit our app on mobile!
                     </p>
                   </div>
                 </div>
@@ -258,9 +227,10 @@ export default function LandingPage() {
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">✨</div>
                   <div>
-                    <h4 className="text-xl font-semibold mb-2 text-white">Anything Else</h4>
+                    <h4 className="text-xl font-semibold mb-2 text-white">Customisations and Themes!</h4>
                     <p className="text-gray-300">
-                      Get creative - we love unique ideas :)
+                      Customise the look and feel of the model and the app.
+                      (There is an experimental Liquid Glass theme)
                     </p>
                   </div>
                 </div>
