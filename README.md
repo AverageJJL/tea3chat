@@ -1,5 +1,8 @@
 # tea3chat
 
+## Running
+To run, go into tea3 and do npm run dev
+
 ## Adding a model provider
 
 Provider implementations live under `tea3/src/providers/`. Each module exports an object that implements the `ModelProvider` interface.
@@ -32,3 +35,7 @@ The OpenAI provider supports optional web search and image generation via the
   },
 }
 ```
+
+## Disclaimer
+If the chat does not work then disable redis
+
