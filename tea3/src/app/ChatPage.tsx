@@ -613,7 +613,10 @@ const MessageRow = React.memo(
   (prev, next) =>
     prev.message.content === next.message.content &&
     prev.message.attachments?.length === next.message.attachments?.length &&
-    prev.message.model === next.message.model
+    prev.message.model === next.message.model &&
+    prev.onRegenerate === next.onRegenerate &&
+    prev.onEdit === next.onEdit &&
+    prev.onBranch === next.onBranch
 );
 
 // -------------------------
