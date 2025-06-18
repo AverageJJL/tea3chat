@@ -14,6 +14,7 @@ export interface ModelProvider {
     model: string;
     messages: any[];
     useWebSearch?: boolean;
+    useImageGeneration?: boolean;
     providerConfig: any;
   }): AsyncIterable<ModelStreamPart>;
 }

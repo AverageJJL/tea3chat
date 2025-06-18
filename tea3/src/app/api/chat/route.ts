@@ -9,6 +9,7 @@ async function processAIAndCacheInBackground({
   model,
   messages,
   useWebSearch,
+  useImageGeneration,
   redisKey,
   timestamp,
   userPreferences,
@@ -17,6 +18,7 @@ async function processAIAndCacheInBackground({
   model: string;
   messages: any[];
   useWebSearch: boolean;
+  useImageGeneration: boolean;
   redisKey: string;
   timestamp: string;
   userPreferences?: { name?: string; role?: string; traits?: string[]; customInstructions?: string; openaiApiKey?: string };
@@ -80,6 +82,7 @@ Present code in Markdown code blocks with the correct language extension indicat
       model,
       messages: messagesWithSystemPrompt,
       useWebSearch: useWebSearch && modelConfig.supportsWebSearch === true,
+      useImageGeneration: useImageGeneration && modelConfig.supportsImageGeneration === true,
       providerConfig: finalProviderConfig,
     })) {
       if (part.type === "content") {
@@ -136,6 +139,7 @@ export async function POST(req: Request) {
       messages,
       model,
       useWebSearch,
+      useImageGeneration,
       assistantMessageId,
       userPreferences,
     } = await req.json();
@@ -231,6 +235,8 @@ Present code in Markdown code blocks with the correct language extension indicat
               model,
               messages: messagesWithSystemPrompt,
               useWebSearch: useWebSearch && modelConfig.supportsWebSearch === true,
+              useImageGeneration:
+                useImageGeneration && modelConfig.supportsImageGeneration === true,
               providerConfig: finalProviderConfig,
             })) {
               if (part.type === "content") {
@@ -283,64 +289,14 @@ Present code in Markdown code blocks with the correct language extension indicat
       model,
       messages,
       useWebSearch,
+      useImageGeneration,
       redisKey,
       timestamp,
       userPreferences,
     });
 
-    // --- CLIENT-FACING STREAM ---
-    // This stream polls Redis and sends updates to the client
-    const clientStream = new ReadableStream({
-      async start(controller) {
-        let lastContentSent = "";
-        let lastReasoningSent = "";
-        const encoder = new TextEncoder();
-
-        while (true) {
-          const rawState = await redis.get(redisKey);
-          if (rawState === null) break; // Key expired or deleted, we're done.
-
-          const state = JSON.parse(rawState.toLocaleString());
-          if (state.content && state.content.length > lastContentSent.length) {
-            const newChunk = state.content.substring(lastContentSent.length);
-            controller.enqueue(
-              encoder.encode(`0:${JSON.stringify(newChunk)}\n`)
-            );
-            lastContentSent = state.content;
-          }
-
-          if (
-            state.reasoning &&
-            state.reasoning.length > lastReasoningSent.length
-          ) {
-            const newChunk = state.reasoning.substring(
-              lastReasoningSent.length
-            );
-            // Use prefix '2:' for custom data frames
-            controller.enqueue(
-              encoder.encode(
-                `2:${JSON.stringify({ type: "reasoning", value: newChunk })}\n`
-              )
-            );
-            lastReasoningSent = state.reasoning;
-          }
-
-          // if the background task marked it as complete, we stop streaming.
-          if (state.status === "complete") break;
-
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-        controller.close();
-      },
-      cancel() {
-        console.log(
-          `[${timestamp}] [CLIENT STREAM] Client disconnected. Stopping polling stream. Background task continues.`
-        );
-      },
-    });
-
-    return new Response(clientStream, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    return new Response(JSON.stringify({ status: "processing" }), {
+      headers: { "Content-Type": "application/json" },
     });
   } catch (error: any) {
     // Enhanced error handling for Redis connection issues

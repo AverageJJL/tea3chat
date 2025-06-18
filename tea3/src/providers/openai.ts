@@ -1,5 +1,5 @@
-import OpenAI from 'openai';
-import type { ModelProvider } from './index';
+import OpenAI from "openai";
+import type { ModelProvider } from "./index";
 
 const defaultClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -32,20 +32,27 @@ function convertMessage(m: any) {
 }
 
 const openaiProvider: ModelProvider = {
-  async *stream({ model, messages, useWebSearch, providerConfig }) {
+  async *stream({
+    model,
+    messages,
+    useWebSearch,
+    useImageGeneration,
+    providerConfig,
+  }) {
     const client = providerConfig?.apiKey
       ? new OpenAI({ apiKey: providerConfig.apiKey })
       : defaultClient;
-      
+
     const input = messages.map(convertMessage);
     const body: any = { model, input, stream: true };
 
     const tools: any[] = [];
     if (providerConfig?.tools?.webSearch && useWebSearch) {
-      tools.push({ type: 'web_search_preview' });
+      tools.push({ type: "web_search_preview" });
     }
-    if (providerConfig?.tools?.imageGeneration) {
-      tools.push({ type: 'image_generation' });
+    // --- FIX: Check useImageGeneration flag from the request ---
+    if (providerConfig?.tools?.imageGeneration && useImageGeneration) {
+      tools.push({ type: "image_generation" });
     }
     if (tools.length > 0) {
       body.tools = tools;
@@ -55,8 +62,8 @@ const openaiProvider: ModelProvider = {
 
     const stream = await client.responses.create(body);
     for await (const event of stream as any) {
-      if (event.type === 'response.output_text.delta') {
-        yield { type: 'content', value: event.delta };
+      if (event.type === "response.output_text.delta") {
+        yield { type: "content", value: event.delta };
       }
     }
   },
