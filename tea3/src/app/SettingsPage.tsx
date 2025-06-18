@@ -1,10 +1,68 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, UserPreferences } from "./db";
+
+const DeleteAllConfirmationModal = ({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onCancel]);
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] animate-in fade-in-0 duration-300"
+      onMouseDown={onCancel}
+    >
+      <div
+        className="bg-gray-800/90 border border-gray-700/50 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 animate-in fade-in-0 zoom-in-95 duration-200"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold text-white">Delete All Chats</h2>
+        <p className="text-white/70 mt-2 text-sm">
+          Are you sure you want to delete all chats? This action cannot be undone.
+        </p>
+        <div className="flex justify-end space-x-3 mt-6">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm"
+            autoFocus
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (typeof window !== "undefined") {
+    return createPortal(modalContent, document.body);
+  }
+  return null;
+};
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
@@ -20,6 +78,7 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState("account");
   const [disableResumableStream, setDisableResumableStream] = useState(false);
   const [useLiquidGlass, setUseLiquidGlass] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   const userPreferences = useLiveQuery(() => {
     if (!user) return undefined;
@@ -145,6 +204,46 @@ export default function SettingsPage() {
     }
   };
 
+  const handleConfirmDeleteAll = async () => {
+    if (!user) return;
+    setShowDeleteAllModal(false);
+
+    const allThreads = await db.threads.where({ userId: user.id }).toArray();
+    const supabaseThreadIds = allThreads
+      .map((t) => t.supabase_id)
+      .filter((id): id is string => !!id);
+
+    // Concurrently delete from Supabase and locally
+    const deletePromises: Promise<any>[] = [];
+
+    // Remote deletion
+    for (const supabaseId of supabaseThreadIds) {
+      deletePromises.push(
+        fetch(`/api/sync/thread?supabase_id=${supabaseId}`, {
+          method: "DELETE",
+        }).catch((err) =>
+          console.error(
+            `Failed to delete remote thread ${supabaseId}:`,
+            err
+          )
+        )
+      );
+    }
+
+    // Local deletion
+    if (supabaseThreadIds.length > 0) {
+      deletePromises.push(
+        db.messages.where("thread_supabase_id").anyOf(supabaseThreadIds).delete()
+      );
+    }
+    deletePromises.push(db.threads.where({ userId: user.id }).delete());
+
+    await Promise.all(deletePromises);
+
+    // Force a reload to ensure all state is cleared, including sidebar
+    navigate("/chat");
+  };
+
   const handleSave = async () => {
     if (!user) return;
     try {
@@ -237,6 +336,7 @@ export default function SettingsPage() {
   }
 
   return (
+    <>
     <div className="chat-container flex-grow flex flex-col">
       <h1 className="text-4xl pb-24 font-bold text-white inline-block align-middle mr-6 mt-6 ml-6">
         Settings
@@ -524,11 +624,43 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+
+              <div className="my-8">
+                <hr className="border-t border-white/10" />
+              </div>
+
+              {/* Delete All Data */}
+              <div className="flex items-start mt-12 justify-between">
+                <div className="flex-1 mr-6">
+                  <label className="block text-lg font-medium text-white/90 mb-2">
+                    Delete All Chats
+                  </label>
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Permanently delete all of your chat history, both locally and from the cloud. This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteAllModal(true)}
+                    className="bg-red-900/80 hover:bg-red-800/80 border-red-700/80 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-lg hover:shadow-red-500/30 text-sm"
+                  >
+                    Delete All
+                  </button>
+                </div>
+              </div>
             </section>
 
           </div>
         </div>
       </div>
     </div>
+    {showDeleteAllModal && (
+      <DeleteAllConfirmationModal
+        onConfirm={handleConfirmDeleteAll}
+        onCancel={() => setShowDeleteAllModal(false)}
+      />
+    )}
+    </>
   );
-} 
+}
