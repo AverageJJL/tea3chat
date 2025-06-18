@@ -38,19 +38,21 @@ body,
         }
 
         .glitch-title::before {
-            background: linear-gradient(90deg, #f86767, #f86767);
+            background: linear-gradient(90deg, #ff0000, #ff1a1a);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
             z-index: -1;
+            filter: saturate(1.5) brightness(1.2);
         }
 
         .glitch-title::after {
-            background: linear-gradient(90deg, #00ffff, #00ffff);
+            background: linear-gradient(90deg, #0066ff, #0080ff);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
             z-index: -2;
+            filter: saturate(1.5) brightness(1.2);
         }
 
         .glitch-title:hover::before {
@@ -76,16 +78,16 @@ body,
                 transform: translate(0);
             }
             20% {
-                transform: translate(-1px, 1px);
+                transform: translate(-2px, 2px);
             }
             40% {
-                transform: translate(-1px, -1px);
+                transform: translate(-2px, -2px);
             }
             60% {
-                transform: translate(1px, 1px);
+                transform: translate(2px, 2px);
             }
             80% {
-                transform: translate(1px, -1px);
+                transform: translate(2px, -2px);
             }
         }
 
@@ -94,31 +96,31 @@ body,
                 transform: translate(0);
             }
             10% {
-                transform: translate(-2px, -1px);
+                transform: translate(-6px, -3px);
             }
             20% {
-                transform: translate(-1px, 1px);
+                transform: translate(-4px, 3px);
             }
             30% {
-                transform: translate(1px, -1px);
+                transform: translate(4px, -3px);
             }
             40% {
-                transform: translate(-1px, 1px);
+                transform: translate(-4px, 3px);
             }
             50% {
-                transform: translate(1px, -1px);
+                transform: translate(4px, -3px);
             }
             60% {
-                transform: translate(-1px, 1px);
+                transform: translate(-4px, 3px);
             }
             70% {
-                transform: translate(1px, -1px);
+                transform: translate(4px, -3px);
             }
             80% {
-                transform: translate(-1px, 1px);
+                transform: translate(-4px, 3px);
             }
             90% {
-                transform: translate(1px, -1px);
+                transform: translate(4px, -3px);
             }
         }
 
@@ -127,31 +129,31 @@ body,
                 transform: translate(0);
             }
             10% {
-                transform: translate(1px, 1px);
+                transform: translate(5px, 4px);
             }
             20% {
-                transform: translate(-1px, -1px);
+                transform: translate(-5px, -4px);
             }
             30% {
-                transform: translate(-1px, 1px);
+                transform: translate(-5px, 4px);
             }
             40% {
-                transform: translate(1px, -1px);
+                transform: translate(5px, -4px);
             }
             50% {
-                transform: translate(-1px, 1px);
+                transform: translate(-5px, 4px);
             }
             60% {
-                transform: translate(1px, -1px);
+                transform: translate(5px, -4px);
             }
             70% {
-                transform: translate(-1px, 1px);
+                transform: translate(-5px, 4px);
             }
             80% {
-                transform: translate(1px, -1px);
+                transform: translate(5px, -4px);
             }
             90% {
-                transform: translate(-1px, 1px);
+                transform: translate(-5px, 4px);
             }
         }
 

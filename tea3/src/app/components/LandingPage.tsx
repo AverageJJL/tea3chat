@@ -107,12 +107,7 @@ export default function LandingPage() {
             isLoaded ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"
           }`}
         >
-          {/* Floating Badge */}
-          <div className="mb-8 inline-flex items-center space-x-2 bg-white/5 backdrop-blur-lg rounded-full px-4 py-2 border border-white/10 shadow-lg">
-            <div className="w-2 h-2 bg-lime-400/80 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-400">Now Available</span>
-          </div>
-
+       
           <h1
             ref={titleRef}
             onMouseEnter={handleMouseEnter}
@@ -124,7 +119,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-            A revolutionary t3 cloneathon project that transforms readability
+            A t3 cloneathon project that transforms readability
             and elevates UI design to new heights
           </p>
 
