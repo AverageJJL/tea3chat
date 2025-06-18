@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import type { ModelProvider } from './index';
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const defaultClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 function convertMessage(m: any) {
   // FIX: Determine the correct content type based on the role.
@@ -33,6 +33,10 @@ function convertMessage(m: any) {
 
 const openaiProvider: ModelProvider = {
   async *stream({ model, messages, useWebSearch, providerConfig }) {
+    const client = providerConfig?.apiKey
+      ? new OpenAI({ apiKey: providerConfig.apiKey })
+      : defaultClient;
+      
     const input = messages.map(convertMessage);
     const body: any = { model, input, stream: true };
 

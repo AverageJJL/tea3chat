@@ -79,6 +79,7 @@ export default function SettingsPage() {
   const [disableResumableStream, setDisableResumableStream] = useState(false);
   const [useLiquidGlass, setUseLiquidGlass] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
 
   const userPreferences = useLiveQuery(() => {
     if (!user) return undefined;
@@ -111,6 +112,7 @@ export default function SettingsPage() {
         userPreferences.disableResumableStream ?? false
       );
       setUseLiquidGlass(userPreferences.useLiquidGlass ?? false);
+      setOpenaiApiKey(userPreferences.openaiApiKey || "");
     }
   }, [userPreferences]);
 
@@ -268,6 +270,30 @@ export default function SettingsPage() {
     } catch (e) {
       console.error("Failed to save preferences", e);
       setSaveStatus({ message: "Failed to save.", type: "error" });
+    }
+  };
+
+  const handleSaveApiKeys = async () => {
+    if (!user) return;
+    try {
+      const existingPrefs = await db.userPreferences
+        .where({ userId: user.id })
+        .first();
+
+      const payload = {
+        openaiApiKey: openaiApiKey,
+      };
+
+      if (existingPrefs?.id) {
+        await db.userPreferences.update(existingPrefs.id, payload);
+      } else {
+        await db.userPreferences.put({ userId: user.id, ...payload });
+      }
+
+      setSaveStatus({ message: "API Key saved!", type: "success" });
+    } catch (e) {
+      console.error("Failed to save API key", e);
+      setSaveStatus({ message: "Failed to save API key.", type: "error" });
     }
   };
 
@@ -430,6 +456,8 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     id="role"
+                    name="role"
+                    autoComplete="organization-title"
                     placeholder="Engineer, student, etc."
                     className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                     value={role}
@@ -530,9 +558,49 @@ export default function SettingsPage() {
             {/* API Keys Section */}
             <section id="api-keys" className="space-y-6 scroll-mt-8">
               <h2 className="text-3xl font-bold text-white">API Keys</h2>
-              <p className="text-white/70">Configure your API keys for different providers.</p>
-              <div className="h-64 flex items-center justify-center text-white/50 frosted-glass rounded-xl">
-                Coming soon...
+              <p className="text-white/70">Configure your API keys for different providers. Keys are stored locally and never sent to our servers.</p>
+              
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-xl font-medium text-white">OpenAI API Key</h3>
+                    <p className="text-white/60 text-sm">For GPT-4.1 Mini model</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative max-w-md">
+                      <input
+                        type="password"
+                        id="openai-api-key"
+                        name="openai-api-key"
+                        autoComplete="new-password"
+                        placeholder="sk-..."
+                        className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                        value={openaiApiKey}
+                        onChange={(e) => setOpenaiApiKey(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-white/50 text-xs">
+                      Get your API key from{" "}
+                      <a
+                        href="https://platform.openai.com/account/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-rose-400 hover:text-rose-300 transition-colors underline"
+                      >
+                        OpenAI's Dashboard
+                      </a>
+                    </p>
+                    <div className="flex justify-start">
+                      <button
+                        onClick={handleSaveApiKeys}
+                        className="frosted-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30 text-sm"
+                      >
+                        Save API Key
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 

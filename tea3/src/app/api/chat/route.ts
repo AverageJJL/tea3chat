@@ -19,7 +19,7 @@ async function processAIAndCacheInBackground({
   useWebSearch: boolean;
   redisKey: string;
   timestamp: string;
-  userPreferences?: { name?: string; role?: string; traits?: string[]; customInstructions?: string };
+  userPreferences?: { name?: string; role?: string; traits?: string[]; customInstructions?: string; openaiApiKey?: string };
 }) {
   let redis: Awaited<ReturnType<typeof getRedisClient>>;
   let finalContent = "";
@@ -68,11 +68,19 @@ Present code in Markdown code blocks with the correct language extension indicat
     const systemMessage = { role: "system" as const, content: systemPrompt };
     const messagesWithSystemPrompt = [systemMessage, ...messages];
 
+    let finalProviderConfig = modelConfig.providerConfig;
+    if (userPreferences?.openaiApiKey && modelConfig.provider === 'openai') {
+      finalProviderConfig = {
+        ...finalProviderConfig,
+        apiKey: userPreferences.openaiApiKey,
+      };
+    }
+
     for await (const part of provider.stream({
       model,
       messages: messagesWithSystemPrompt,
       useWebSearch: useWebSearch && modelConfig.supportsWebSearch === true,
-      providerConfig: modelConfig.providerConfig,
+      providerConfig: finalProviderConfig,
     })) {
       if (part.type === "content") {
         finalContent += part.value;
@@ -212,11 +220,18 @@ Present code in Markdown code blocks with the correct language extension indicat
           const encoder = new TextEncoder();
           let finalContent = "";
           try {
+            let finalProviderConfig = modelConfig.providerConfig;
+            if (userPreferences?.openaiApiKey && modelConfig.provider === 'openai') {
+              finalProviderConfig = {
+                ...finalProviderConfig,
+                apiKey: userPreferences.openaiApiKey,
+              };
+            }
             for await (const part of provider.stream({
               model,
               messages: messagesWithSystemPrompt,
               useWebSearch: useWebSearch && modelConfig.supportsWebSearch === true,
-              providerConfig: modelConfig.providerConfig,
+              providerConfig: finalProviderConfig,
             })) {
               if (part.type === "content") {
                 finalContent += part.value;
