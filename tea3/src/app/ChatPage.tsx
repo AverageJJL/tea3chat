@@ -26,6 +26,7 @@ import {
 import "./liquid-glass.css";
 import "./md-renderer.css";
 import LiquidGlass from "./components/LiquidGlass";
+import { createPortal } from "react-dom";
 
 // --- SYNC SERVICE TYPES AND FUNCTIONS ---
 
@@ -637,6 +638,186 @@ const MessageRow = React.memo(
     prev.onEdit === next.onEdit &&
     prev.onBranch === next.onBranch
 );
+
+// Custom Model Selector Component
+const ModelSelector = React.memo(function ModelSelector({
+  selectedModel,
+  availableModels,
+  onSelectModel,
+  isLoading,
+  disabled,
+}: {
+  selectedModel: string;
+  availableModels: {
+    value: string;
+    displayName: string;
+    supportsImages?: boolean;
+    supportsWebSearch?: boolean;
+    supportsImageGeneration?: boolean;
+  }[];
+  onSelectModel: (model: string) => void;
+  isLoading: boolean;
+  disabled: boolean;
+}) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = React.useState<{ top: number; left: number; width: number; offset?: number }>({ top: 0, left: 0, width: 0 });
+
+  // Get display name for selected model
+  const selectedModelDisplay = React.useMemo(() => {
+    if (isLoading) return "Loading models...";
+    if (!availableModels.length) return "No models available";
+    return availableModels.find(m => m.value === selectedModel)?.displayName || selectedModel;
+  }, [selectedModel, availableModels, isLoading]);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const targetNode = event.target as Node;
+      const clickedInsideButton = dropdownRef.current?.contains(targetNode);
+      const clickedInsideMenu = menuRef.current?.contains(targetNode);
+      if (!clickedInsideButton && !clickedInsideMenu) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      // Compute menu position
+      if (dropdownRef.current) {
+        const rect = dropdownRef.current.getBoundingClientRect();
+        // Position the menu above the selector with 8px gap
+        const newTop = rect.top; // top of button
+        const offset = 8;
+        setMenuPosition({ top: newTop, left: rect.left, width: rect.width, offset });
+      }
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Keyboard navigation
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (disabled) return;
+
+    switch (event.key) {
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        setIsOpen(!isOpen);
+        break;
+      case 'Escape':
+        setIsOpen(false);
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        if (!isOpen) {
+          setIsOpen(true);
+        }
+        break;
+    }
+  };
+
+  const handleOptionSelect = (modelValue: string) => {
+    onSelectModel(modelValue);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        className={`frosted-button-sidebar appearance-none cursor-pointer px-3 py-2 pr-8 text-white text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-white/20 transition-all duration-200 min-w-[140px] hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between ${
+          isOpen ? 'bg-white/10' : ''
+        }`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span className="truncate">{selectedModelDisplay}</span>
+        <svg
+          className={`w-4 h-4 text-white/60 transition-all duration-200 ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth="2"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {/* Custom Dropdown Menu rendered in portal */}
+      {isOpen && !disabled && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            left: menuPosition.left,
+            // Half the trigger button width
+            width: menuPosition.width * 2,
+            // Position above: compute bottom based on viewport height and button position
+            bottom: `calc(100vh - ${menuPosition.top - (menuPosition.offset || 8)}px)`,
+            zIndex: 1000,
+          }}
+          className="py-2 frosted-glass backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-visible"
+        >
+          {availableModels.map((model) => (
+            <button
+              key={model.value}
+              onClick={() => handleOptionSelect(model.value)}
+              className={`w-full px-3 py-2 text-left text-sm transition-all duration-150 hover:bg-white/10 focus:bg-white/10 focus:outline-none ${
+                selectedModel === model.value
+                  ? 'text-blue-300 bg-blue-500/10'
+                  : 'text-white/90 hover:text-white'
+              }`}
+              role="option"
+              aria-selected={selectedModel === model.value}
+            >
+              <div className="flex items-center justify-between">
+                <span className="truncate">{model.displayName}</span>
+                {selectedModel === model.value && (
+                  <svg
+                    className="w-4 h-4 text-blue-400 ml-2 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth="2"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </div>
+              {(model.supportsImages || model.supportsWebSearch || model.supportsImageGeneration) && (
+                <div className="flex items-center space-x-1 mt-1">
+                  {model.supportsImages && (
+                    <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-md">
+                      Images
+                    </span>
+                  )}
+                  {model.supportsWebSearch && (
+                    <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-md">
+                      Web
+                    </span>
+                  )}
+                  {model.supportsImageGeneration && (
+                    <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-md">
+                      Image Generate
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+});
 
 // -------------------------
 // Memoized list of messages
@@ -1993,32 +2174,13 @@ const ChatInputContent = (
           <div className="flex items-center gap-3">
             {/* Model Selector */}
             <div className="flex items-center space-x-2">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 shadow-xl px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
+              <ModelSelector
+                selectedModel={selectedModel}
+                availableModels={availableModels}
+                onSelectModel={setSelectedModel}
+                isLoading={isLoadingModels}
                 disabled={isLoadingModels || availableModels.length === 0}
-              >
-                {isLoadingModels && (
-                  <option value="" className="bg-gray-800/95 text-white">
-                    Loading models...
-                  </option>
-                )}
-                {!isLoadingModels && availableModels.length === 0 && (
-                  <option value="" className="bg-gray-800/95 text-white">
-                    No models available
-                  </option>
-                )}
-                {availableModels.map((m) => (
-                  <option
-                    key={m.value}
-                    value={m.value}
-                    className="bg-gray-800/95 text-white"
-                  >
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Web Search Toggle */}
@@ -2074,7 +2236,7 @@ const ChatInputContent = (
                   title={
                     useImageGeneration
                       ? "Disable image generation"
-                      : "Enable image generation"
+                      : "Enable image generation (only works with byok!)"
                   }
                 >
                   <svg
@@ -2101,7 +2263,7 @@ const ChatInputContent = (
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800/90 backdrop-blur text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
                   {useImageGeneration
                     ? "Disable image generation"
-                    : "Enable image generation"}
+                    : "Enable image generation (only works with byok!)"}
                 </div>
               </div>
             )}

@@ -74,7 +74,7 @@ export default function SettingsPage() {
   const [traits, setTraits] = useState<string[]>([]);
   const [currentTrait, setCurrentTrait] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
-  const [saveStatus, setSaveStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{message: string, type: 'success' | 'error', source?: 'prefs' | 'keys' | 'settings'} | null>(null);
   const [activeSection, setActiveSection] = useState("account");
   const [disableResumableStream, setDisableResumableStream] = useState(false);
   const [useLiquidGlass, setUseLiquidGlass] = useState(false);
@@ -169,11 +169,11 @@ export default function SettingsPage() {
           disableResumableStream: newValue,
         });
       }
-      setSaveStatus({ message: "Setting updated!", type: "success" });
+      setSaveStatus({ message: "Setting updated!", type: "success", source: 'settings' });
     } catch (e) {
       setDisableResumableStream(!newValue); // Revert on error
       console.error("Failed to update resumable stream preference", e);
-      setSaveStatus({ message: "Failed to update setting.", type: "error" });
+      setSaveStatus({ message: "Failed to update setting.", type: "error", source: 'settings' });
     }
   };
 
@@ -198,11 +198,11 @@ export default function SettingsPage() {
           useLiquidGlass: newValue,
         });
       }
-      setSaveStatus({ message: "Setting updated!", type: "success" });
+      setSaveStatus({ message: "Setting updated!", type: "success", source: 'settings' });
     } catch (e) {
       setUseLiquidGlass(!newValue); // Revert on error
       console.error("Failed to update liquid glass preference", e);
-      setSaveStatus({ message: "Failed to update setting.", type: "error" });
+      setSaveStatus({ message: "Failed to update setting.", type: "error", source: 'settings' });
     }
   };
 
@@ -266,10 +266,10 @@ export default function SettingsPage() {
         await db.userPreferences.put({ userId: user.id, ...payload });
       }
 
-      setSaveStatus({ message: "Preferences saved!", type: "success" });
+      setSaveStatus({ message: "Preferences saved!", type: "success", source: 'prefs' });
     } catch (e) {
       console.error("Failed to save preferences", e);
-      setSaveStatus({ message: "Failed to save.", type: "error" });
+      setSaveStatus({ message: "Failed to save.", type: "error", source: 'prefs' });
     }
   };
 
@@ -290,10 +290,10 @@ export default function SettingsPage() {
         await db.userPreferences.put({ userId: user.id, ...payload });
       }
 
-      setSaveStatus({ message: "API Key saved!", type: "success" });
+      setSaveStatus({ message: "API Key saved!", type: "success", source: 'keys' });
     } catch (e) {
       console.error("Failed to save API key", e);
-      setSaveStatus({ message: "Failed to save API key.", type: "error" });
+      setSaveStatus({ message: "Failed to save API key.", type: "error", source: 'keys' });
     }
   };
 
@@ -533,7 +533,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end items-center pt-4 gap-4">
-                {saveStatus && (
+                {saveStatus && saveStatus.source === 'prefs' && (
                   <span
                     className={`text-sm font-medium transition-opacity duration-500 ${
                       saveStatus.type === 'success' ? 'text-gray-300' : 'text-gray-400'
@@ -564,7 +564,7 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-xl font-medium text-white">OpenAI API Key</h3>
-                    <p className="text-white/60 text-sm">For GPT-4.1 Mini model</p>
+                    <p className="text-white/60 text-sm">For GPT-4.1 Mini model (especially image generation, since our api key doesn't work)</p>
                   </div>
 
                   <div className="space-y-3">
@@ -591,13 +591,22 @@ export default function SettingsPage() {
                         OpenAI's Dashboard
                       </a>
                     </p>
-                    <div className="flex justify-start">
+                    <div className="flex justify-start items-center gap-4">
                       <button
                         onClick={handleSaveApiKeys}
                         className="frosted-button bg-rose-600/80 hover:bg-rose-500/80 border-rose-500/80 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-lg hover:shadow-rose-500/30 text-sm"
                       >
                         Save API Key
                       </button>
+                      {saveStatus && saveStatus.source === 'keys' && (
+                        <span
+                          className={`text-sm font-medium transition-opacity duration-500 ${
+                            saveStatus.type === 'success' ? 'text-gray-300' : 'text-gray-400'
+                          }`}
+                        >
+                          {saveStatus.message}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
