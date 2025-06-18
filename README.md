@@ -11,3 +11,5 @@ Syntax highlighting and MD rendering was done, and we used a different approach 
 Mobile friendly aspect ratio is also provided.
 
 Our focus is to build a chatapp that is clean and perform well, with good custimisations. 
+<img width="1792" alt="Screenshot 2025-06-19 at 00 07 50" src="https://github.com/user-attachments/assets/9ce5125e-6fe5-4977-b77a-354ded5742e7" />
+<img width="1791" alt="Screenshot 2025-06-19 at 00 08 11" src="https://github.com/user-attachments/assets/3bd5c06c-56ea-4c80-8d2b-62b816964356" />
