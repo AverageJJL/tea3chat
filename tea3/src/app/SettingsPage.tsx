@@ -207,21 +207,40 @@ export default function SettingsPage() {
   const handleConfirmDeleteAll = async () => {
     if (!user) return;
     setShowDeleteAllModal(false);
+
     const allThreads = await db.threads.where({ userId: user.id }).toArray();
-    for (const thread of allThreads) {
-      if (thread.supabase_id) {
-        try {
-          await fetch(`/api/sync/thread?supabase_id=${thread.supabase_id}`, {
-            method: "DELETE",
-          });
-        } catch (err) {
-          console.error("Failed to delete thread on Supabase:", err);
-        }
-      }
+    const supabaseThreadIds = allThreads
+      .map((t) => t.supabase_id)
+      .filter((id): id is string => !!id);
+
+    // Concurrently delete from Supabase and locally
+    const deletePromises: Promise<any>[] = [];
+
+    // Remote deletion
+    for (const supabaseId of supabaseThreadIds) {
+      deletePromises.push(
+        fetch(`/api/sync/thread?supabase_id=${supabaseId}`, {
+          method: "DELETE",
+        }).catch((err) =>
+          console.error(
+            `Failed to delete remote thread ${supabaseId}:`,
+            err
+          )
+        )
+      );
     }
-    await db.messages.clear();
-    await db.threads.clear();
-    await db.userPreferences.where({ userId: user.id }).delete();
+
+    // Local deletion
+    if (supabaseThreadIds.length > 0) {
+      deletePromises.push(
+        db.messages.where("thread_supabase_id").anyOf(supabaseThreadIds).delete()
+      );
+    }
+    deletePromises.push(db.threads.where({ userId: user.id }).delete());
+
+    await Promise.all(deletePromises);
+
+    // Force a reload to ensure all state is cleared, including sidebar
     navigate("/chat");
   };
 
@@ -606,14 +625,29 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end mt-12">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteAllModal(true)}
-                  className="frosted-button bg-red-600/80 hover:bg-red-500/80 border-red-500/80 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg hover:shadow-red-500/30"
-                >
-                  Delete All
-                </button>
+              <div className="my-8">
+                <hr className="border-t border-white/10" />
+              </div>
+
+              {/* Delete All Data */}
+              <div className="flex items-start mt-12 justify-between">
+                <div className="flex-1 mr-6">
+                  <label className="block text-lg font-medium text-white/90 mb-2">
+                    Delete All Chats
+                  </label>
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Permanently delete all of your chat history, both locally and from the cloud. This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteAllModal(true)}
+                    className="bg-red-900/80 hover:bg-red-800/80 border-red-700/80 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-lg hover:shadow-red-500/30 text-sm"
+                  >
+                    Delete All
+                  </button>
+                </div>
               </div>
             </section>
 
