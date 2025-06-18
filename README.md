@@ -1,41 +1,13 @@
-# tea3chat
+This is a chatapp using Next.js and tailwind as a frontend, Supabase for remote DB, Dexie for indexedDB and Redis for resumable stream implementation.
 
-## Running
-To run, go into tea3 and do npm run dev
+We added Openrouter, Groq Gemini (first party API) and OpenAI (responses endpoint) as provider, and a clear structure in the codebase for easier implementation of new models. Our focus on the UI was being responsive and at the same time provide a clean and modern look. Theming was scheduled (we added experimental liquid glass inspired by WWDC 25) but isn't completed due to the time constraint.
 
-## Adding a model provider
+Attachment and images input and web search are supported by the Gemini models via their first party API, and Images input and web search are supported by the OpenAI models. Image generation via the responses endpoint tools calling is also supported (byok only because we don't have organisation approved API keys)
 
-Provider implementations live under `tea3/src/providers/`. Each module exports an object that implements the `ModelProvider` interface.
-To expose models, add the provider to `PROVIDERS` in `src/providers/index.ts` and update `MODEL_TO_PROVIDER` in `src/app/api/chat/route.ts` with the model name to provider key mapping.
+Chat sharing and branching is also implemented.
 
-### Available providers
+Syntax highlighting and MD rendering was done, and we used a different approach that took inspiration from obsidian for easier readability.
 
-- `groq`
-- `openrouter`
-- `gemini`
-- `openai` (uses the `/v1/chat/responses` API)
+Mobile friendly aspect ratio is also provided.
 
-Each model entry can specify `supportsImages` and `supportsWebSearch` so the UI
-knows which capabilities are available.
-
-The OpenAI provider supports optional web search and image generation via the
-`tools` field in the model's provider config. Example:
-
-```ts
-"gpt-4.1-mini": {
-  provider: "openai",
-  displayName: "GPT-4.1 Mini",
-  supportsImages: true,
-  supportsWebSearch: true,
-  providerConfig: {
-    tools: {
-      webSearch: true,
-      imageGeneration: true,
-    },
-  },
-}
-```
-
-## Disclaimer
-If the chat does not work then disable redis
-
+Our focus is to build a chatapp that is clean and perform well, with good custimisations. 
