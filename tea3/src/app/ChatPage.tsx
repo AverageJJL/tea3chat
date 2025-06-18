@@ -288,6 +288,7 @@ interface ChatPageContext {
     value: string;
     displayName: string;
     supportsImages?: boolean;
+    supportsWebSearch?: boolean;
   }[];
   selectedModel: string;
   setSelectedModel: React.Dispatch<React.SetStateAction<string>>;
@@ -306,7 +307,12 @@ const MessageRow = React.memo(
     isGenerating,
   }:{
     message: Message;
-    availableModels: { value: string; displayName: string }[];
+    availableModels: {
+      value: string;
+      displayName: string;
+      supportsImages?: boolean;
+      supportsWebSearch?: boolean;
+    }[];
     onEdit: (m: Message) => void;
     onRegenerate: (m: Message) => void;
     onBranch: (m: Message) => void;
@@ -739,7 +745,8 @@ export default function ChatPage() {
 
   // Helper function to check if current model supports web search
   const currentModelSupportsWebSearch = () => {
-    return selectedModel === "gemini-2.5-flash";
+    const spec = availableModels.find((m) => m.value === selectedModel);
+    return spec?.supportsWebSearch ?? false;
   };
 
   // Reset web search when switching to a model that doesn't support it
@@ -999,10 +1006,8 @@ export default function ChatPage() {
 
     const modelForResponse = selectedModel;
 
-    const currentModelSpec = availableModels.find(
-      (m) => m.value === selectedModel
-    );
-    const modelSupportsImages = currentModelSpec?.supportsImages || false;
+    const modelSpec = availableModels.find((m) => m.value === selectedModel);
+    const modelSupportsImages = modelSpec?.supportsImages ?? false;
     if (attachedFiles.length > 0 && !modelSupportsImages) {
       setError("Attachments are not supported by the selected model.");
       return;
@@ -1115,13 +1120,14 @@ export default function ChatPage() {
           const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: modelForResponse,
-              messages: historyForAI,
-              useWebSearch: useWebSearch && currentModelSupportsWebSearch(),
-              assistantMessageId: assistantMessageToUpdate.supabase_id,
-              userPreferences: userPreferences,
-            }),
+          body: JSON.stringify({
+            model: modelForResponse,
+            messages: historyForAI,
+            useWebSearch:
+              useWebSearch && currentModelSupportsWebSearch(),
+            assistantMessageId: assistantMessageToUpdate.supabase_id,
+            userPreferences: userPreferences,
+          }),
             signal: editController.signal,
           });
 
@@ -1565,7 +1571,8 @@ export default function ChatPage() {
             model: modelForRegeneration,
             messages: historyForAI,
             useWebSearch:
-              useWebSearch && modelToUse === "gemini-2.5-flash",
+              useWebSearch &&
+              (currentModelSpec?.supportsWebSearch ?? false),
             assistantMessageId: regenerationStreamId,
             userPreferences: userPreferences,
           }),

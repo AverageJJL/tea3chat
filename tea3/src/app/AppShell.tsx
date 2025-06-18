@@ -9,6 +9,7 @@ interface AiModel {
   value: string;
   displayName: string;
   supportsImages?: boolean;
+  supportsWebSearch?: boolean;
 }
 
 export default function AppShell() {
@@ -31,7 +32,7 @@ export default function AppShell() {
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
           const geminiModel = data.models.find(
-            (model: AiModel) => model.value === "gemini-2.5-flash-preview-05-20"
+            (model: AiModel) => model.value === "gemini-2.5-flash"
           );
           setSelectedModel(
             geminiModel ? geminiModel.value : data.models[0].value
