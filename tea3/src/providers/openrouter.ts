@@ -1,19 +1,30 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+import { OpenAI } from 'openai';
 import type { ModelProvider } from './index';
+import { CoreMessage } from 'ai';
 
-const client = createOpenAI({
+const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: 'https://openrouter.ai/api/v1',
 });
 
 const openrouterProvider: ModelProvider = {
-  displayName: 'Deepseek V3',
-  supportsImages: false,
-  async *stream({ model, messages }) {
-    const result = await streamText({ model: client(model), messages });
-    for await (const chunk of result.textStream) {
-      yield chunk;
+  async *stream({ model, messages, providerConfig }) {
+    const response = await client.chat.completions.create({
+      model: model,
+      messages: messages as CoreMessage[],
+      stream: true,
+      ...providerConfig,
+    });
+
+    for await (const chunk of response) {
+      const reasoning = (chunk.choices[0].delta as any).reasoning;
+      if (reasoning) {
+        yield { type: 'reasoning', value: reasoning };
+      }
+      const content = chunk.choices[0].delta.content;
+      if (content) {
+        yield { type: 'content', value: content };
+      }
     }
   },
 };

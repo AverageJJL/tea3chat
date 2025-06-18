@@ -4,10 +4,46 @@ import { PROVIDERS, ModelProvider } from "@/src/providers";
 
 
 // Map of model names to the provider key defined in src/providers
-export const MODEL_TO_PROVIDER: Record<string, string> = {
-  "llama3-8b-8192": "groq",
-  "deepseek/deepseek-chat-v3-0324": "openrouter",
-  "gemini-2.5-flash-preview-05-20": "gemini",
+export const MODELS_CONFIG: Record<
+  string,
+  {
+    provider: string;
+    displayName: string;
+    supportsImages: boolean;
+    providerConfig: any;
+  }
+> = {
+  "llama3-8b-8192": {
+    provider: "groq",
+    displayName: "Llama 3 8B (Groq)",
+    supportsImages: false,
+    providerConfig: {},
+  },
+  "deepseek/deepseek-chat-v3-0324": {
+    provider: "openrouter",
+    displayName: "Deepseek V3",
+    supportsImages: false,
+    providerConfig: {},
+  },
+  "deepseek/deepseek-r1-0528": {
+    provider: "openrouter",
+    displayName: "Deepseek R1",
+    supportsImages: false,
+    providerConfig: {
+      reasoning: { enabled: true },
+    },
+  },
+  "gemini-2.5-flash": {
+    provider: "gemini",
+    displayName: "Gemini 2.5 Flash",
+    supportsImages: true,
+    providerConfig: {
+      thinkingConfig: { thinkingBudget: 0 },
+      tools: {
+        googleSearch: true,
+      },
+    },
+  },
 };
 async function processAIAndCacheInBackground({
   provider,
@@ -28,6 +64,7 @@ async function processAIAndCacheInBackground({
 }) {
   let redis: Awaited<ReturnType<typeof getRedisClient>>;
   let finalContent = "";
+  let finalReasoning = "";
 
   try {
     console.log(
@@ -36,7 +73,8 @@ async function processAIAndCacheInBackground({
 
     redis = await getRedisClient();
 
-    const modelDisplayName = provider.displayName;
+    const modelConfig = MODELS_CONFIG[model];
+    const modelDisplayName = modelConfig.displayName;
     const currentTimestamp = new Date().toLocaleString(undefined, {
       timeZoneName: "short",
     });
@@ -71,25 +109,53 @@ Present code in Markdown code blocks with the correct language extension indicat
     const systemMessage = { role: "system" as const, content: systemPrompt };
     const messagesWithSystemPrompt = [systemMessage, ...messages];
 
-    for await (const chunk of provider.stream({ model, messages: messagesWithSystemPrompt, useWebSearch })) {
-      finalContent += chunk;
-      const state = { status: "streaming", content: finalContent };
+    for await (const part of provider.stream({
+      model,
+      messages: messagesWithSystemPrompt,
+      useWebSearch,
+      providerConfig: modelConfig.providerConfig,
+    })) {
+      if (part.type === "content") {
+        finalContent += part.value;
+      } else if (part.type === "reasoning") {
+        finalReasoning += part.value;
+      }
+      const state = {
+        status: "streaming",
+        content: finalContent,
+        reasoning: finalReasoning,
+      };
       await redis.set(redisKey, JSON.stringify(state), { EX: 300 });
     }
     console.log(
       `[${timestamp}] [BACKGROUND] AI processing finished for key: ${redisKey}.`
     );
+    console.log(
+      `[${timestamp}] [BACKGROUND] Final response for key ${redisKey}:`,
+      finalContent
+    );
+    if (finalReasoning) {
+      console.log(
+        `[${timestamp}] [BACKGROUND] Final reasoning for key ${redisKey}:`,
+        finalReasoning
+      );
+    }
   } catch (error) {
     console.error(
       `[${timestamp}] [BACKGROUND] Error during AI processing for key ${redisKey}:`,
       error
     );
     finalContent = `Error: Generation failed.`;
+    finalReasoning = "";
   } finally {
     console.log(
       `[${timestamp}] [BACKGROUND] Task complete. Setting final content for key ${redisKey} with 60s TTL.`
     );
-    const finalState = { status: "complete", content: finalContent };
+    const finalState = {
+      status: "complete",
+      content: finalContent,
+      reasoning: finalReasoning,
+    };
     await redis.set(redisKey, JSON.stringify(finalState), { EX: 60 });
   }
 }
@@ -114,6 +180,11 @@ export async function POST(req: Request) {
       `[${timestamp}] [POST] Received request for model: ${model}, assistantMessageId: ${assistantMessageId}`
     );
 
+    if (messages && messages.length > 0) {
+      const userMessage = messages[messages.length - 1];
+      console.log(`[${timestamp}] [USER MESSAGE]`, userMessage);
+    }
+
     // --- Validation ---
     if (!assistantMessageId) {
       return new Response(
@@ -128,18 +199,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const providerKey: string | undefined = MODEL_TO_PROVIDER[model];
+    const modelConfig = MODELS_CONFIG[model];
 
-    if (!providerKey) {
+    if (!modelConfig) {
       return new Response(JSON.stringify({ error: "Invalid model" }), {
         status: 400,
       });
     }
-    const provider = PROVIDERS[providerKey];
+    const provider = PROVIDERS[modelConfig.provider];
     // Add other validations as needed...
 
     if (disableResumableStream) {
-      const modelDisplayName = provider.displayName;
+      const modelDisplayName = modelConfig.displayName;
       const currentTimestamp = new Date().toLocaleString(undefined, {
         timeZoneName: "short",
       });
@@ -180,16 +251,30 @@ Present code in Markdown code blocks with the correct language extension indicat
       const directStream = new ReadableStream({
         async start(controller) {
           const encoder = new TextEncoder();
+          let finalContent = "";
           try {
-            for await (const chunk of provider.stream({
+            for await (const part of provider.stream({
               model,
               messages: messagesWithSystemPrompt,
               useWebSearch,
+              providerConfig: modelConfig.providerConfig,
             })) {
-              controller.enqueue(
-                encoder.encode(`0:${JSON.stringify(chunk)}\n`)
-              );
+              if (part.type === "content") {
+                finalContent += part.value;
+                controller.enqueue(
+                  encoder.encode(`0:${JSON.stringify(part.value)}\n`)
+                );
+              } else if (part.type === "reasoning") {
+                // Use prefix '2:' for custom data frames
+                controller.enqueue(
+                  encoder.encode(`2:${JSON.stringify(part)}\n`)
+                );
+              }
             }
+            console.log(
+              `[${timestamp}] [DIRECT STREAM] Final response:`,
+              finalContent
+            );
           } catch (err) {
             console.error(`[${timestamp}] [DIRECT STREAM] Error:`, err);
             controller.enqueue(
@@ -234,6 +319,7 @@ Present code in Markdown code blocks with the correct language extension indicat
     const clientStream = new ReadableStream({
       async start(controller) {
         let lastContentSent = "";
+        let lastReasoningSent = "";
         const encoder = new TextEncoder();
 
         while (true) {
@@ -241,12 +327,28 @@ Present code in Markdown code blocks with the correct language extension indicat
           if (rawState === null) break; // Key expired or deleted, we're done.
 
           const state = JSON.parse(rawState.toLocaleString());
-          if (state.content.length > lastContentSent.length) {
+          if (state.content && state.content.length > lastContentSent.length) {
             const newChunk = state.content.substring(lastContentSent.length);
             controller.enqueue(
               encoder.encode(`0:${JSON.stringify(newChunk)}\n`)
             );
             lastContentSent = state.content;
+          }
+
+          if (
+            state.reasoning &&
+            state.reasoning.length > lastReasoningSent.length
+          ) {
+            const newChunk = state.reasoning.substring(
+              lastReasoningSent.length
+            );
+            // Use prefix '2:' for custom data frames
+            controller.enqueue(
+              encoder.encode(
+                `2:${JSON.stringify({ type: "reasoning", value: newChunk })}\n`
+              )
+            );
+            lastReasoningSent = state.reasoning;
           }
 
           // if the background task marked it as complete, we stop streaming.
@@ -308,10 +410,12 @@ Present code in Markdown code blocks with the correct language extension indicat
 // Export available models for frontend use
 export async function GET() {
   try {
-    const models = Object.entries(MODEL_TO_PROVIDER).map(([value, key]) => ({
+    const models = Object.entries(MODELS_CONFIG).map(([value, config]) => ({
       value,
-      displayName: PROVIDERS[key].displayName,
-      supportsImages: PROVIDERS[key].supportsImages,
+      displayName: config.displayName,
+      supportsImages: config.supportsImages,
+      // Note: We are not exposing providerConfig to the client here for security
+      // and simplicity. The client only needs the list of models.
     }));
 
     return Response.json({ models });
