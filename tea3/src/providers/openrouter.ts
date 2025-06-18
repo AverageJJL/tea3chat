@@ -16,7 +16,7 @@ const openrouterProvider: ModelProvider = {
       ...providerConfig,
     });
 
-    for await (const chunk of response) {
+    for await (const chunk of response as any) {
       const reasoning = (chunk.choices[0].delta as any).reasoning;
       if (reasoning) {
         yield { type: 'reasoning', value: reasoning };

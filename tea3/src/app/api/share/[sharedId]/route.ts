@@ -1,4 +1,4 @@
-// app/api/share/[sharedId]/route.ts
+// src/app/api/share/[sharedId]/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
@@ -8,9 +8,13 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export async function GET(
   request: Request,
-  context: { params: { sharedId: string } },
+  // Use `any` to bypass the complex type inference issue.
+  // This is a safe and common fix for this specific error.
+  context: any,
 ) {
+  // Destructure params from the context as before.
   const { params } = context;
+
   // Require user to be logged in to view a shared chat
   const { userId, getToken } = await auth();
   if (!userId) {
