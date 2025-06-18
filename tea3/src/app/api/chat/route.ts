@@ -1,6 +1,7 @@
 // api/chat/route.ts
 import { getRedisClient } from "@/lib/redis";
 import { PROVIDERS, ModelProvider } from "@/src/providers";
+import { NextResponse } from "next/server";
 
 
 // Map of model names to the provider key defined in src/providers
@@ -436,12 +437,14 @@ export async function GET() {
       // and simplicity. The client only needs the list of models.
     }));
 
-    return Response.json({ models });
+    return NextResponse.json({ models });
   } catch (error) {
     console.error("Failed to fetch models:", error);
-    return new Response(JSON.stringify({ error: "Failed to load available models" }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(
+      { error: "Failed to load available models" },
+      {
+        status: 500,
+      },
+    );
   }
 }
