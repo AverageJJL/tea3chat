@@ -133,8 +133,9 @@ export default function LandingPage() {
                   <div>
                     <h4 className="text-xl font-semibold mb-2 text-white">Image Generation Support</h4>
                     <p className="text-gray-300">
-                      Implemented but we do not have a key that can do image generation #broke
+                      Implemented but we do not have a key that can do image generation #broke. 
                     </p>
+                    <p>BUT if you have your own GPT 4.1 Mini key that has image generation then you can bring your own key in the Settings</p>
                   </div>
                 </div>
               </div>

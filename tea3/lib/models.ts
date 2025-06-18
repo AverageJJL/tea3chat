@@ -59,7 +59,7 @@ export const MODELS_CONFIG: Record<
     providerConfig: {
       tools: {
         webSearch: true,
-        imageGeneration: true,
+        // imageGeneration: true,
       },
     },
   },
