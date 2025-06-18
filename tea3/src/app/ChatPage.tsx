@@ -740,7 +740,7 @@ export default function ChatPage() {
 
   // Helper function to check if current model supports web search
   const currentModelSupportsWebSearch = () => {
-    return selectedModel === "gemini-2.5-flash-preview-05-20";
+    return selectedModel === "gemini-2.5-flash";
   };
 
   // Reset web search when switching to a model that doesn't support it
@@ -1000,9 +1000,10 @@ export default function ChatPage() {
 
     const modelForResponse = selectedModel;
 
-    const modelSupportsImages =
-      selectedModel === "meta-llama/llama-4-maverick:free" ||
-      selectedModel === "gemini-2.5-flash-preview-05-20";
+    const currentModelSpec = availableModels.find(
+      (m) => m.value === selectedModel
+    );
+    const modelSupportsImages = currentModelSpec?.supportsImages || false;
     if (attachedFiles.length > 0 && !modelSupportsImages) {
       setError("Attachments are not supported by the selected model.");
       return;
@@ -1564,7 +1565,7 @@ export default function ChatPage() {
             model: modelForRegeneration,
             messages: historyForAI,
             useWebSearch:
-              useWebSearch && modelToUse === "gemini-2.5-flash-preview-05-20",
+              useWebSearch && modelToUse === "gemini-2.5-flash",
             assistantMessageId: regenerationStreamId,
             userPreferences: userPreferences,
           }),
