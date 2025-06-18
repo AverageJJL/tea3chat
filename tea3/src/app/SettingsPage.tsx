@@ -74,7 +74,7 @@ export default function SettingsPage() {
     setTraits((prev) => prev.filter((t) => t !== traitToRemove));
   }, []);
 
-  const handleTraitKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleTraitKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       addTrait();
@@ -341,45 +341,49 @@ export default function SettingsPage() {
               </div>
 
               {/* Traits */}
-              <div>
+                <div>
                 <label htmlFor="traits" className="block text-lg font-medium text-white/90 mb-3">
                   What traits should Tweak3 Chat have?
                 </label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    id="traits"
-                    placeholder="Type a trait and press Enter or Tab..."
-                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                    value={currentTrait}
-                    onChange={(e) => setCurrentTrait(e.target.value)}
-                    onKeyDown={handleTraitKeyDown}
-                    maxLength={200}
+                  <textarea
+                  id="traits"
+                  rows={1}
+                  placeholder="Type a trait and press Enter or Tab..."
+                  className="frosted-input w-full rounded-lg px-4 pt-3 pb-8 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none overflow-y-hidden"
+                  value={currentTrait}
+                  onChange={(e) => {
+                    setCurrentTrait(e.target.value);
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                  }}
+                  onKeyDown={handleTraitKeyDown}
+                  maxLength={200}
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">{currentTrait.length}/200</span>
+                  <span className="absolute right-4 bottom-4 text-white/40 text-sm pointer-events-none">{currentTrait.length}/200</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-3">
                   {traits.map((trait) => (
-                    <button
-                      key={trait}
-                      type="button"
-                      onClick={() => removeTrait(trait)}
-                      className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
-                      title="Remove trait"
-                    >
-                      <span>{trait}</span>
-                      <span className="text-white/50">×</span>
-                    </button>
+                  <button
+                    key={trait}
+                    type="button"
+                    onClick={() => removeTrait(trait)}
+                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
+                    title="Remove trait"
+                  >
+                    <span>{trait}</span>
+                    <span className="text-white/50">×</span>
+                  </button>
                   ))}
                   <button
-                    type="button"
-                    onClick={handleTweakyClick}
-                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
+                  type="button"
+                  onClick={handleTweakyClick}
+                  className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
                   >
-                    <span>tweaky +</span>
+                  <span>tweaky +</span>
                   </button>
                 </div>
-              </div>
+                </div>
 
               {/* Custom Instructions */}
               <div>
@@ -391,7 +395,7 @@ export default function SettingsPage() {
                     id="custom-instructions"
                     rows={8}
                     placeholder="Interests, values, or preferences to keep in mind"
-                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                    className="frosted-input w-full rounded-lg px-4 py-3 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all custom-scrollbar"
                     value={customInstructions}
                     onChange={(e) => setCustomInstructions(e.target.value)}
                     maxLength={3000}

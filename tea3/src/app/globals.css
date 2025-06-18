@@ -282,6 +282,13 @@ body,
   opacity: 0;
 }
 
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1410px) {
+  .chat-scroll-container {
+    padding-top: 80px; /* Add padding to the top to avoid overlap */
+  }
+}
+
 /* Code block styling */
 .code-block-container {
   @apply my-4 rounded-xl overflow-hidden border border-gray-600/30 w-full;
@@ -332,4 +339,10 @@ body,
 
 .message-markdown p:last-child {
   margin-bottom: 0; /* Remove margin from last paragraph */
+}
+
+@media (max-width: 768px) {
+  body.sidebar-open {
+    overflow: hidden;
+  }
 }

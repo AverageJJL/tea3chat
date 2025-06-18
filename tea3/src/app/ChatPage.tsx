@@ -303,12 +303,14 @@ const MessageRow = React.memo(
     onEdit,
     onRegenerate,
     onBranch,
-  }: {
+    isGenerating,
+  }:{
     message: Message;
     availableModels: { value: string; displayName: string }[];
     onEdit: (m: Message) => void;
     onRegenerate: (m: Message) => void;
     onBranch: (m: Message) => void;
+    isGenerating?: boolean;
   }) {
     // No hover state; CSS handles visibility via group-hover
 
@@ -414,6 +416,16 @@ const MessageRow = React.memo(
     // Memoise heavy Markdown render
     const markdownBody = React.useMemo(() => {
       if (!isAssistant) return null;
+
+      if (isGenerating && !message.content) {
+        return (
+          <div className="flex items-center space-x-3 text-white/70">
+            <Loader2 className="animate-spin text-white/50" />
+            <span className="text-lg font-medium">Reasoning...</span>
+          </div>
+        );
+      }
+
       return (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -614,6 +626,7 @@ const MessageRow = React.memo(
     prev.message.content === next.message.content &&
     prev.message.attachments?.length === next.message.attachments?.length &&
     prev.message.model === next.message.model &&
+    prev.isGenerating === next.isGenerating &&
     prev.onRegenerate === next.onRegenerate &&
     prev.onEdit === next.onEdit &&
     prev.onBranch === next.onBranch
@@ -660,6 +673,7 @@ export default function ChatPage() {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   // Add edit message state
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [generatingMessageId, setGeneratingMessageId] = useState<number | null>(null);
   // Add scroll to bottom button state
   const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
   // Add web search state
@@ -675,6 +689,10 @@ export default function ChatPage() {
   const scrollRafRef = useRef<number | null>(null);
   // Store the default (collapsed) scrollHeight to avoid recalculating every keystroke
   const baseTextareaHeightRef = useRef<number>(0);
+  const isSendingRef = useRef(isSending);
+  useEffect(() => {
+    isSendingRef.current = isSending;
+  }, [isSending]);
 
   const isSubmittingRef = useRef(false);
   // Ref to manage aborting ongoing fetch/stream requests
@@ -1286,7 +1304,8 @@ export default function ChatPage() {
       };
       assistantMessageSupabaseId = assistantMessageData.supabase_id!;
       assistantLocalMessageId = await db.messages.add(assistantMessageData);
-
+      setGeneratingMessageId(assistantLocalMessageId);
+      
       if (!userPreferences?.disableResumableStream) {
         sessionStorage.setItem(
           "inFlightAssistantMessageId",
@@ -1473,13 +1492,18 @@ export default function ChatPage() {
 
   const handleRegenerate = React.useCallback(
     async (msg: Message) => {
-      if (!messages || !msg.id || isSending) return;
-      const index = messages.findIndex((m) => m.id === msg.id);
+      if (!messages || !msg.id || isSendingRef.current) return;
+
+      const allMessagesInThread = await db.messages
+      .where("thread_supabase_id")
+      .equals(msg.thread_supabase_id)
+      .sortBy("createdAt");
+
+      const index = allMessagesInThread.findIndex((m) => m.id === msg.id);
       if (index === -1) return;
 
       const idsToDelete: string[] = [];
-      const threadSupabaseId = msg.thread_supabase_id;
-      const messagesToDelete = messages.slice(index + 1);
+      const messagesToDelete = allMessagesInThread.slice(index + 1);
       for (const msgToDelete of messagesToDelete) {
         if (msgToDelete.id) {
           if (msgToDelete.supabase_id) {
@@ -1502,6 +1526,7 @@ export default function ChatPage() {
       );
 
       setIsSending(true);
+      setGeneratingMessageId(msg.id);
 
       const modelForRegeneration = msg.model || selectedModel;
       // Ensure msg.id is valid before updating
@@ -1590,6 +1615,7 @@ export default function ChatPage() {
       } finally {
         setIsSending(false);
         abortControllerRef.current = null;
+        setGeneratingMessageId(null);
         sessionStorage.removeItem("inFlightAssistantMessageId");
 
         // Sync only the regenerated message to Supabase
@@ -1614,7 +1640,7 @@ export default function ChatPage() {
         }
       }
     },
-    [messages, selectedModel, availableModels, useWebSearch, isSending]
+    [selectedModel, availableModels, useWebSearch, userPreferences]
   ); // End of handleRegenerate
 
   const handleBranch = React.useCallback(
@@ -1940,16 +1966,16 @@ const ChatInputContent = (
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="frosted-button-sidebar px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
+                className="bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 shadow-xl px-2 py-1 md:px-3 md:py-2 text-white text-xs md:text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-w-0 max-w-[8rem] md:max-w-none truncate"
                 disabled={isLoadingModels || availableModels.length === 0}
               >
                 {isLoadingModels && (
-                  <option value="" className="bg-gray-800 text-white">
+                  <option value="" className="bg-gray-800/95 text-white">
                     Loading models...
                   </option>
                 )}
                 {!isLoadingModels && availableModels.length === 0 && (
-                  <option value="" className="bg-gray-800 text-white">
+                  <option value="" className="bg-gray-800/95 text-white">
                     No models available
                   </option>
                 )}
@@ -1957,7 +1983,7 @@ const ChatInputContent = (
                   <option
                     key={m.value}
                     value={m.value}
-                    className="bg-gray-800 text-white"
+                    className="bg-gray-800/95 text-white"
                   >
                     {m.displayName}
                   </option>
@@ -2028,7 +2054,7 @@ const ChatInputContent = (
           {isSending ? (
             <XSquare />
           ) : editingMessage ? (
-            <span className="text-sm font-medium">Update</span>
+            <SendHorizonal/>
           ) : (
             <SendHorizonal />
           )}
@@ -2045,14 +2071,14 @@ const ChatInputContent = (
           <UserButton
             appearance={{
               elements: {
-                avatarBox: "w-8 h-8",
-                userButtonPopoverCard:
-                  "bg-gray-900/95 backdrop-blur border border-gray-700",
-                userButtonPopoverActionButton:
-                  "text-white hover:bg-gray-700",
-                userButtonPopoverActionButtonText: "text-white",
-                userButtonPopoverFooter: "hidden",
-              },
+              avatarBox: "w-8 h-8",
+              userButtonPopoverCard:
+                "bg-gray-900/95 backdrop-blur border border-gray-700",
+              userButtonPopoverActionButton:
+                "text-white hover:bg-gray-700",
+              userButtonPopoverActionButtonText: "text-white",
+              userButtonPopoverFooter: "hidden",
+                  },
             }}
           />
         </div>
@@ -2072,8 +2098,8 @@ const ChatInputContent = (
 
       <div
         ref={scrollContainerRef}
+        className="chat-scroll-container flex-grow overflow-y-auto custom-scrollbar p-6"
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto custom-scrollbar p-6 relative"
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -2120,6 +2146,7 @@ const ChatInputContent = (
                 onEdit={handleEditMessage}
                 onRegenerate={handleRegenerate}
                 onBranch={handleBranch}
+                isGenerating={generatingMessageId === m.id}
               />
             );
           })}
