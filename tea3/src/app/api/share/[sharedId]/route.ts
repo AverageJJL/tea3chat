@@ -8,8 +8,9 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export async function GET(
   request: Request,
-  { params }: { params: { sharedId: string } },
+  context: { params: { sharedId: string } },
 ) {
+  const { params } = context;
   // Require user to be logged in to view a shared chat
   const { userId, getToken } = await auth();
   if (!userId) {
