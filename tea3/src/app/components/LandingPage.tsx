@@ -42,7 +42,7 @@ export default function LandingPage() {
             Tweak3
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 mb-8">
-            A t3 cloneathon project
+            A t3 cloneathon project that enhances readability and UI
           </p>
           <SignInButton mode="modal">
             <button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-lg text-lg transition-all duration-300 transform hover:scale-105 shadow-lg">
@@ -52,7 +52,7 @@ export default function LandingPage() {
         </div>
         
         {/* More Info Section */}
-        <div className="absolute bottom-8 flex flex-col items-center">
+        <div className="absolute bottom-8 flex flex-col items-center z-20">
           <p className="text-gray-400 mb-2">more info</p>
           <button
             onClick={scrollToFeatures}
@@ -61,12 +61,10 @@ export default function LandingPage() {
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-          </button>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4">
+          </button>        
+          </div>
+      </section>      {/* Features Section */}
+      <section id="features" className="pt-60 pb-20 px-4 bg-[#000000]/40 rounded-t-3xl -mt-32 relative z-10">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-16 text-white">
             Features
@@ -74,10 +72,8 @@ export default function LandingPage() {
           
           {/* Core Requirements */}
           <div className="mb-16">
-            <h3 className="text-2xl font-semibold mb-8 text-gray-300">Core Requirements</h3>
-       
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-2xl font-semibold mb-8 text-gray-300">Core Requirements</h3>            <div className="grid md:grid-cols-2 gap-8">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">💬</div>
                   <div>
@@ -92,7 +88,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">👤</div>
                   <div>
@@ -112,10 +108,8 @@ export default function LandingPage() {
 
           {/* Bonus Features */}
           <div>
-            <h3 className="text-2xl font-semibold mb-8 text-gray-300">Bonus Features</h3>
-
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-2xl font-semibold mb-8 text-gray-300">Bonus Features</h3>            <div className="grid md:grid-cols-2 gap-8">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">📎</div>
                   <div>
@@ -127,7 +121,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🎨</div>
                   <div>
@@ -135,12 +129,12 @@ export default function LandingPage() {
                     <p className="text-gray-300">
                       Implemented but we do not have a key that can do image generation #broke. 
                     </p>
-                    <p>BUT if you have your own GPT 4.1 Mini key that has image generation then you can bring your own key in the Settings</p>
+                    <p className="text-gray-300">BUT if you have your own GPT 4.1 Mini key that has image generation then you can bring your own key in the Settings</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🔍</div>
                   <div>
@@ -152,7 +146,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">⚡</div>
                   <div>
@@ -164,7 +158,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🌳</div>
                   <div>
@@ -176,7 +170,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🔗</div>
                   <div>
@@ -188,7 +182,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🔍</div>
                   <div>
@@ -200,7 +194,7 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">🔑</div>
                   <div>
@@ -212,19 +206,19 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">📱</div>
                   <div>
                     <h4 className="text-xl font-semibold mb-2 text-white">Mobile Friendly</h4>
                     <p className="text-gray-300">
-                      You can visit our app on mobile!
+                      Our app is fully responsive and works great on mobile devices
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="frosted-glass rounded-xl p-6">
                 <div className="flex items-start space-x-4">
                   <div className="text-2xl">✨</div>
                   <div>
