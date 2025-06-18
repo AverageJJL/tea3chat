@@ -374,8 +374,7 @@ export async function GET() {
       displayName: config.displayName,
       supportsImages: config.supportsImages,
       supportsWebSearch: config.supportsWebSearch === true,
-      // Note: We are not exposing providerConfig to the client here for security
-      // and simplicity. The client only needs the list of models.
+      supportsImageGeneration: config.supportsImageGeneration === true,
     }));
 
     return NextResponse.json({ models });

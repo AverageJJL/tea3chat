@@ -4,21 +4,31 @@ import type { ModelProvider } from './index';
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 function convertMessage(m: any) {
+  // FIX: Determine the correct content type based on the role.
+  const contentType = m.role === "assistant" ? "output_text" : "input_text";
+
   if (Array.isArray(m.content)) {
     const content = m.content
       .map((part: any) => {
-        if (part.type === 'text') {
-          return { type: 'input_text', text: part.text };
-        } else if (part.type === 'image_url') {
-          const url = typeof part.image_url === 'string' ? part.image_url : part.image_url.url;
-          return { type: 'input_image', image_url: url };
+        if (part.type === "text") {
+          // Use the determined contentType
+          return { type: contentType, text: part.text };
+        } else if (part.type === "image_url") {
+          // Images are always 'input_image' and only valid for user roles
+          const url =
+            typeof part.image_url === "string"
+              ? part.image_url
+              : part.image_url.url;
+          return { type: "input_image", image_url: url };
         }
         return null;
       })
       .filter(Boolean);
     return { role: m.role, content };
   }
-  return { role: m.role, content: [{ type: 'input_text', text: m.content }] };
+
+  // Also use the determined contentType for simple text messages
+  return { role: m.role, content: [{ type: contentType, text: m.content }] };
 }
 
 const openaiProvider: ModelProvider = {

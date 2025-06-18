@@ -10,6 +10,7 @@ interface AiModel {
   displayName: string;
   supportsImages?: boolean;
   supportsWebSearch?: boolean;
+  supportsImageGeneration?: boolean;
 }
 
 export default function AppShell() {

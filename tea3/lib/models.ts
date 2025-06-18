@@ -7,6 +7,7 @@ export const MODELS_CONFIG: Record<
     displayName: string;
     supportsImages: boolean;
     supportsWebSearch?: boolean;
+    supportsImageGeneration?: boolean;
     providerConfig: any;
   }
 > = {
@@ -15,6 +16,7 @@ export const MODELS_CONFIG: Record<
     displayName: "Llama 3 8B (Groq)",
     supportsImages: false,
     supportsWebSearch: false,
+    supportsImageGeneration: false,
     providerConfig: {},
   },
   "deepseek/deepseek-chat-v3-0324": {
@@ -22,6 +24,7 @@ export const MODELS_CONFIG: Record<
     displayName: "Deepseek V3",
     supportsImages: false,
     supportsWebSearch: false,
+    supportsImageGeneration: false,
     providerConfig: {},
   },
   "deepseek/deepseek-r1-0528": {
@@ -29,6 +32,7 @@ export const MODELS_CONFIG: Record<
     displayName: "Deepseek R1",
     supportsImages: false,
     supportsWebSearch: false,
+    supportsImageGeneration: false,
     providerConfig: {
       reasoning: { enabled: true },
     },
@@ -38,6 +42,7 @@ export const MODELS_CONFIG: Record<
     displayName: "Gemini 2.5 Flash",
     supportsImages: true,
     supportsWebSearch: true,
+    supportsImageGeneration: false,
     providerConfig: {
       thinkingConfig: { thinkingBudget: 0 },
       tools: {
@@ -50,6 +55,7 @@ export const MODELS_CONFIG: Record<
     displayName: "GPT-4.1 Mini",
     supportsImages: true,
     supportsWebSearch: true,
+    supportsImageGeneration: true,
     providerConfig: {
       tools: {
         webSearch: true,
