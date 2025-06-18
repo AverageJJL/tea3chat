@@ -21,6 +21,7 @@ export interface UserPreferences {
   customInstructions?: string;
   disableResumableStream?: boolean;
   useLiquidGlass?: boolean;
+  openaiApiKey?: string;
 }
 
 export interface MessageAttachment { 
