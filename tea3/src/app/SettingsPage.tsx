@@ -71,7 +71,6 @@ export default function SettingsPage() {
 
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
-  const [traits, setTraits] = useState<string[]>([]);
   const [currentTrait, setCurrentTrait] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
   const [saveStatus, setSaveStatus] = useState<{message: string, type: 'success' | 'error', source?: 'prefs' | 'keys' | 'settings'} | null>(null);
@@ -106,7 +105,8 @@ export default function SettingsPage() {
     if (userPreferences) {
       setName(userPreferences.name || "");
       setRole(userPreferences.role || "");
-      setTraits(userPreferences.traits || []);
+      const loadedTraits = (userPreferences.traits || []).join("\n");
+      setCurrentTrait(loadedTraits);
       setCustomInstructions(userPreferences.customInstructions || "");
       setDisableResumableStream(
         userPreferences.disableResumableStream ?? false
@@ -116,36 +116,18 @@ export default function SettingsPage() {
     }
   }, [userPreferences]);
 
-  const addTrait = useCallback(() => {
-    const trimmed = currentTrait.trim();
-    if (!trimmed) return;
-    if (traits.length >= 5) {
-      alert("You can add up to 5 traits only.");
-      return;
-    }
-    if (trimmed.length > 200) {
-      alert("Trait exceeds 200 characters limit.");
-      return;
-    }
-    setTraits((prev) => [...prev, trimmed]);
-    setCurrentTrait("");
-  }, [currentTrait, traits]);
-
-  const removeTrait = useCallback((traitToRemove: string) => {
-    setTraits((prev) => prev.filter((t) => t !== traitToRemove));
-  }, []);
-
   const handleTraitKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      addTrait();
+    if (e.key === "Enter") {
+      const lines = (currentTrait.split("\n").length);
+      if (lines >= 5) {
+        e.preventDefault();
+      }
     }
   };
 
   const handleTweakyClick = () => {
-    setCurrentTrait(
-      "You are jittery, restless, overly energetic and hypercreative. Like you've had too much caffeine."
-    );
+    const tweakyText = "You are jittery, restless, overly energetic and hypercreative. Like you've had too much caffeine.";
+    setCurrentTrait((prev) => (prev ? prev + "\n" + tweakyText : tweakyText));
   };
 
   const handleToggleResumableStream = async () => {
@@ -248,6 +230,10 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!user) return;
+    // Build traits array from textarea content (one per line)
+    const rawLines = currentTrait.split("\n");
+    const cleaned = rawLines.map((l) => l.trim()).filter(Boolean);
+    const limited = cleaned.slice(0, 5).map((t) => t.slice(0, 200));
     try {
       const existingPrefs = await db.userPreferences
         .where({ userId: user.id })
@@ -256,7 +242,7 @@ export default function SettingsPage() {
       const payload = {
         name,
         role,
-        traits,
+        traits: limited,
         customInstructions,
       };
 
@@ -266,6 +252,8 @@ export default function SettingsPage() {
         await db.userPreferences.put({ userId: user.id, ...payload });
       }
 
+      // Update local state so UI reflects the newly saved trait immediately
+      setCurrentTrait(limited.join("\n"));
       setSaveStatus({ message: "Preferences saved!", type: "success", source: 'prefs' });
     } catch (e) {
       console.error("Failed to save preferences", e);
@@ -477,7 +465,7 @@ export default function SettingsPage() {
                   <textarea
                   id="traits"
                   rows={1}
-                  placeholder="Type a trait and press Enter or Tab..."
+                  placeholder="Type traits here..."
                   className="frosted-input w-full rounded-lg px-4 pt-3 pb-8 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none overflow-y-hidden"
                   value={currentTrait}
                   onChange={(e) => {
@@ -490,25 +478,13 @@ export default function SettingsPage() {
                   />
                   <span className="absolute right-4 bottom-4 text-white/40 text-sm pointer-events-none">{currentTrait.length}/200</span>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-3">
-                  {traits.map((trait) => (
+                <div className="mt-3">
                   <button
-                    key={trait}
                     type="button"
-                    onClick={() => removeTrait(trait)}
-                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
-                    title="Remove trait"
+                    onClick={handleTweakyClick}
+                    className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full hover:text-white transition-all"
                   >
-                    <span>{trait}</span>
-                    <span className="text-white/50">×</span>
-                  </button>
-                  ))}
-                  <button
-                  type="button"
-                  onClick={handleTweakyClick}
-                  className="frosted-button-sidebar px-4 py-2 text-sm text-white/80 rounded-full flex items-center space-x-2 hover:text-white transition-all"
-                  >
-                  <span>tweaky +</span>
+                    <span>tweaky +</span>
                   </button>
                 </div>
                 </div>
