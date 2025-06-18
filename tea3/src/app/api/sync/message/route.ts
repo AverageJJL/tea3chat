@@ -43,21 +43,52 @@ export async function POST(request: Request) {
 
     const supabase = await getSupabaseClient(getToken);
 
-    // --- Step 1: Delete subsequent messages ---
-    // Check if idsToDelete is a non-empty array before proceeding
+    // --- Step 1: Delete subsequent messages and their attachements ---
     if (idsToDelete && Array.isArray(idsToDelete) && idsToDelete.length > 0) {
-      const { error: deleteError } = await supabase
+      const { data: messages, error: findError } = await supabase
         .from("messages")
-        .delete()
+        .select("id")
         .in("shared_id", idsToDelete) // Use the universal shared_id
         .eq("clerk_user_id", userId); // Security check
 
-      if (deleteError) {
-        console.error("Supabase delete error:", deleteError);
-        throw new Error(`Failed to delete messages: ${deleteError.message}`);
+      if (findError) {
+        console.error("Supabase delete error:", findError);
+        throw new Error(`Failed to delete messages: ${findError.message}`);
+      }
+
+      if (messages && messages.length > 0) {
+        const internalMessageIds = messages.map((m) => m.id);
+
+        // Before deleting messages, delete their attachments to avoid FK violations.
+        const { error: attachmentDeleteError } = await supabase
+          .from("attachments")
+          .delete()
+          .in("messageId", internalMessageIds);
+
+        if (attachmentDeleteError) {
+          console.error(
+            "Supabase attachment delete error:",
+            attachmentDeleteError
+          );
+          throw new Error(
+            `Failed to delete attachments: ${attachmentDeleteError.message}`
+          );
+        }
+
+        const { error: messageDeleteError } = await supabase
+          .from("messages")
+          .delete()
+          .in("id", internalMessageIds);
+
+        if (messageDeleteError) {
+          console.error("Supabase message delete error:", messageDeleteError);
+          throw new Error(
+            `Failed to delete messages: ${messageDeleteError.message}`
+          );
+        }
       }
     }
-
+    
     // --- Step 2: Upsert the edited/regenerated messages ---
     if (
       messagesToUpsert &&

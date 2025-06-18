@@ -244,6 +244,7 @@ interface ThreadRowProps {
   onContextMenu: (e: React.MouseEvent, thread: ThreadType) => void;
   setDeletingThread: (t: ThreadType) => void;
   supabaseThreadId: string | undefined;
+  onChatSelect: () => void;
 }
 
 const ThreadRow = memo(
@@ -258,6 +259,7 @@ const ThreadRow = memo(
     onContextMenu,
     setDeletingThread,
     supabaseThreadId,
+    onChatSelect,
   }: ThreadRowProps) => {
     if (isEditing) {
       return (
@@ -290,6 +292,7 @@ const ThreadRow = memo(
               : "text-white/70 hover:bg-white/5 hover:text-white"
           }`}
           title={thread.title}
+          onChatSelect={onChatSelect}
         >
           {thread.is_pinned && (
             <svg
@@ -370,12 +373,14 @@ const ThreadLink = memo(
     children,
     className,
     title,
+    onChatSelect,
   }: {
     threadId: string;
     disabled: boolean;
     children: React.ReactNode;
     className?: string;
     title?: string;
+    onChatSelect: () => void;
   }) => {
     const navigate = useNavigate();
     const handleClick = (e: React.MouseEvent) => {
@@ -387,6 +392,7 @@ const ThreadLink = memo(
       }
       e.preventDefault();
       navigate(`/chat/${threadId}`);
+      onChatSelect();
     };
     return (
       <a
@@ -414,6 +420,21 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
   const [deletingThread, setDeletingThread] =
     useState<(typeof threads)[number] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (isCollapsed) {
+      document.body.classList.remove("sidebar-open");
+    } else {
+      document.body.classList.add("sidebar-open");
+    }
+  }, [isCollapsed]);
+
+  const handleChatSelection = useCallback(() => {
+    // On mobile, collapse the sidebar when a chat is selected for a better UX.
+    if (window.innerWidth < 768) {
+      setIsCollapsed(true);
+    }
+  }, []);
 
   // Detect viewport changes so the sidebar behaves responsively.
   // It collapses automatically on small screens and expands on larger ones
@@ -764,6 +785,7 @@ export default function Sidebar({ userId, onNewChat }: SidebarProps) {
       onContextMenu={handleContextMenu}
       setDeletingThread={setDeletingThread}
       supabaseThreadId={supabaseThreadId}
+      onChatSelect={handleChatSelection}
     />
   );
 
