@@ -1,19 +1,44 @@
 "use client";
 
 import { SignInButton } from "@clerk/nextjs";
+import { useRef, useCallback } from "react";
 // Using inline SVG for chevron down icon
 
 export default function LandingPage() {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
   const scrollToFeatures = () => {
     document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const handleMouseEnter = useCallback(() => {
+    if (titleRef.current && !titleRef.current.classList.contains('glitch-played')) {
+      // Allow animation to play, then mark as played after animation duration
+      setTimeout(() => {
+        if (titleRef.current) {
+          titleRef.current.classList.add('glitch-played');
+        }
+      }, 600); // Match the animation duration
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (titleRef.current) {
+      titleRef.current.classList.remove('glitch-played');
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-[#3a3d4f] text-white">
       {/* Hero Section */}
       <section className="h-screen flex flex-col items-center justify-center relative">
-        <div className="text-center max-w-4xl mx-auto px-4">
-          <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+        <div className="text-center max-w-4xl mx-auto px-4">          <h1 
+            ref={titleRef}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent glitch-title" 
+            data-text="Tweak3"
+          >
             Tweak3
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 mb-8">
