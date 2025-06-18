@@ -421,7 +421,6 @@ const MessageRow = React.memo(
         return (
           <div className="flex items-center space-x-3 text-white/70">
             <Loader2 className="animate-spin text-white/50" />
-            <span className="text-lg font-medium">Reasoning...</span>
           </div>
         );
       }
@@ -1416,6 +1415,7 @@ export default function ChatPage() {
           );
         }
       }
+      setGeneratingMessageId(null);
     }
   };
 
